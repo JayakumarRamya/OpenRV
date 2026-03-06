@@ -1,4 +1,4 @@
-name: Build OpenRV Windows
+name: OpenRV Windows
 
 on:
 workflow_dispatch:
