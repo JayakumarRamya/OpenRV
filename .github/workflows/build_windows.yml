@@ -7,7 +7,6 @@ jobs:
 build:
 runs-on: windows-2022
 
-```
 steps:
 
 - name: Checkout source
@@ -69,11 +68,11 @@ steps:
   run: |
     echo "QT_HOME=$env:Qt6_Dir" >> $env:GITHUB_ENV
 
-- name: Build OpenRV with FFmpeg codecs
+- name: Build OpenRV
   shell: msys2 {0}
   run: |
     export RV_VFX_PLATFORM=CY2024
-
+    git submodule update --init --recursive
     source rvcmds.sh
 
     rvbootstrap
