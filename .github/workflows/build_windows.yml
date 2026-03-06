@@ -62,11 +62,12 @@ jobs:
           host: windows
           target: desktop
           arch: win64_msvc2019_64
+          dir: C:/Qt
 
       - name: Set Qt Environment
         shell: powershell
         run: |
-          echo "QT_HOME=$env:Qt6_Dir" >> $env:GITHUB_ENV
+          echo "QT_HOME=C:/Qt/6.5.3/msvc2019_64" >> $env:GITHUB_ENV
 
       - name: Build OpenRV
         shell: msys2 {0}
