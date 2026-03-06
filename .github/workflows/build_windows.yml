@@ -74,11 +74,13 @@ jobs:
       run: |
         export RV_VFX_PLATFORM=CY2024
 
+        cd $GITHUB_WORKSPACE
+
         git submodule update --init --recursive
 
         source rvcmds.sh
 
-        bash ./rvbootstrap
+        bash rvbootstrap
 
         rvcfg \
         -DRV_FFMPEG_NON_FREE_DECODERS_TO_ENABLE="aac;h264;hevc;prores" \
