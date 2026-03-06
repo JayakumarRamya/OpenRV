@@ -1,0 +1,31 @@
+name: Build OpenRV Windows
+
+on:
+  workflow_dispatch:
+
+jobs:
+  build:
+    runs-on: windows-2022
+
+    steps:
+      - name: Checkout source
+        uses: actions/checkout@v4
+        with:
+          submodules: recursive
+
+      - name: Install Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.9'
+
+      - name: Install CMake
+        uses: lukka/get-cmake@latest
+
+      - name: Install bootstrap
+        run: pip install rvbootstrap
+
+      - name: Bootstrap dependencies
+        run: rvbootstrap
+
+      - name: Build OpenRV
+        run: rvmk
