@@ -57,23 +57,15 @@ jobs:
           target: desktop
           arch: win64_msvc2019_64
 
-      - name: Set Qt Environment
-        shell: powershell
-        run: |
-          echo "QT_HOME=$env:Qt5_Dir" >> $env:GITHUB_ENV
-
-      - name: Bootstrap OpenRV
-        shell: powershell
-        run: |
-          .\rvbootstrap
-
       - name: Build OpenRV
-        shell: powershell
+        shell: bash
         run: |
-          .\rvmk
+          source rvcmds.sh
+          rvbootstrap
+          rvmk
 
-      - name: Upload Build Artifact
+      - name: Upload artifact
         uses: actions/upload-artifact@v4
         with:
-          name: OpenRV-Windows
-          path: build
+          name: openrv-windows
+          path: _build/stage/app
