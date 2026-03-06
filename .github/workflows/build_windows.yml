@@ -54,6 +54,7 @@ jobs:
           mingw-w64-x86_64-autotools
           mingw-w64-x86_64-libarchive
           mingw-w64-x86_64-glew
+          mingw-w64-x86_64-pkg-config
 
     - name: Install Qt
       uses: jurplel/install-qt-action@v4
@@ -72,20 +73,26 @@ jobs:
     - name: Build OpenRV
       shell: msys2 {0}
       run: |
+
         export RV_VFX_PLATFORM=CY2024
+        export RV_BUILD_PARALLELISM=8
 
         cd $GITHUB_WORKSPACE
 
         git submodule update --init --recursive
 
+        # load OpenRV build commands
         source rvcmds.sh
 
-        bash rvbootstrap
+        # first-time dependency build
+        rvbootstrap
 
+        # configure build
         rvcfg \
-        -DRV_FFMPEG_NON_FREE_DECODERS_TO_ENABLE="aac;h264;hevc;prores" \
-        -DRV_FFMPEG_NON_FREE_ENCODERS_TO_ENABLE="aac"
+          -DRV_FFMPEG_NON_FREE_DECODERS_TO_ENABLE="aac;h264;hevc;prores" \
+          -DRV_FFMPEG_NON_FREE_ENCODERS_TO_ENABLE="aac"
 
+        # build OpenRV
         rvmk
 
     - name: Upload OpenRV Build
