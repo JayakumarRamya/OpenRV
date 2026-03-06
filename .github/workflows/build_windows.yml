@@ -60,6 +60,7 @@ jobs:
       - name: Build OpenRV
         shell: bash
         run: |
+          git submodule update --init --recursive
           source rvcmds.sh
           echo "2" | rvbootstrap
           rvmk
