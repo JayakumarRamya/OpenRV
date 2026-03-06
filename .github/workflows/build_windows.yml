@@ -1,91 +1,90 @@
 name: OpenRV Windows
 
 on:
-workflow_dispatch:
+  workflow_dispatch:
 
 jobs:
-build:
-runs-on: windows-2022
+  build:
+    runs-on: windows-2022
 
-steps:
+    steps:
 
-- name: Checkout source
-  uses: actions/checkout@v4
-  with:
-    submodules: recursive
+      - name: Checkout source
+        uses: actions/checkout@v4
+        with:
+          submodules: recursive
 
-- name: Setup Python
-  uses: actions/setup-python@v5
-  with:
-    python-version: "3.11"
+      - name: Setup Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
 
-- name: Install CMake
-  uses: lukka/get-cmake@latest
+      - name: Install CMake
+        uses: lukka/get-cmake@latest
 
-- name: Install Strawberry Perl
-  run: choco install strawberryperl -y
+      - name: Install Strawberry Perl
+        run: choco install strawberryperl -y
 
-- name: Install Rust
-  shell: powershell
-  run: |
-    Invoke-WebRequest https://win.rustup.rs/x86_64 -OutFile rustup-init.exe
-    .\rustup-init.exe -y
-    echo "$env:USERPROFILE\.cargo\bin" | Out-File -FilePath $env:GITHUB_PATH -Encoding utf8 -Append
+      - name: Install Rust
+        shell: powershell
+        run: |
+          Invoke-WebRequest https://win.rustup.rs/x86_64 -OutFile rustup-init.exe
+          .\rustup-init.exe -y
+          echo "$env:USERPROFILE\.cargo\bin" | Out-File -FilePath $env:GITHUB_PATH -Encoding utf8 -Append
 
-- name: Install MSYS2
-  uses: msys2/setup-msys2@v2
-  with:
-    msystem: MINGW64
-    update: true
-    install: >
-      git
-      flex
-      bison
-      nasm
-      unzip
-      zip
-      patch
-      autoconf
-      automake
-      libtool
-      make
-      mingw-w64-x86_64-toolchain
-      mingw-w64-x86_64-meson
-      mingw-w64-x86_64-autotools
-      mingw-w64-x86_64-libarchive
-      mingw-w64-x86_64-glew
+      - name: Install MSYS2
+        uses: msys2/setup-msys2@v2
+        with:
+          msystem: MINGW64
+          update: true
+          install: >
+            git
+            flex
+            bison
+            nasm
+            unzip
+            zip
+            patch
+            autoconf
+            automake
+            libtool
+            make
+            mingw-w64-x86_64-toolchain
+            mingw-w64-x86_64-meson
+            mingw-w64-x86_64-autotools
+            mingw-w64-x86_64-libarchive
+            mingw-w64-x86_64-glew
 
-- name: Install Qt
-  uses: jurplel/install-qt-action@v4
-  with:
-    version: "6.5.3"
-    host: windows
-    target: desktop
-    arch: win64_msvc2019_64
+      - name: Install Qt
+        uses: jurplel/install-qt-action@v4
+        with:
+          version: "6.5.3"
+          host: windows
+          target: desktop
+          arch: win64_msvc2019_64
 
-- name: Set Qt Environment
-  shell: powershell
-  run: |
-    echo "QT_HOME=$env:Qt6_Dir" >> $env:GITHUB_ENV
+      - name: Set Qt Environment
+        shell: powershell
+        run: |
+          echo "QT_HOME=$env:Qt6_Dir" >> $env:GITHUB_ENV
 
-- name: Build OpenRV
-  shell: msys2 {0}
-  run: |
-    export RV_VFX_PLATFORM=CY2024
-    git submodule update --init --recursive
-    source rvcmds.sh
+      - name: Build OpenRV
+        shell: msys2 {0}
+        run: |
+          export RV_VFX_PLATFORM=CY2024
+          git submodule update --init --recursive
+          source rvcmds.sh
 
-    rvbootstrap
+          rvbootstrap
 
-    rvcfg \
-    -DRV_FFMPEG_NON_FREE_DECODERS_TO_ENABLE="aac;h264;hevc;prores" \
-    -DRV_FFMPEG_NON_FREE_ENCODERS_TO_ENABLE="aac"
+          rvcfg \
+          -DRV_FFMPEG_NON_FREE_DECODERS_TO_ENABLE="aac;h264;hevc;prores" \
+          -DRV_FFMPEG_NON_FREE_ENCODERS_TO_ENABLE="aac"
 
-    rvmk
+          rvmk
 
-- name: Upload OpenRV Build
-  uses: actions/upload-artifact@v4
-  with:
-    name: OpenRV-Windows
-    path: _build/stage/app
-```
+      - name: Upload OpenRV Build
+        uses: actions/upload-artifact@v4
+        with:
+          name: OpenRV-Windows
+          path: _build/stage/app
