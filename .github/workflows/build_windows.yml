@@ -13,20 +13,56 @@ jobs:
         with:
           submodules: recursive
 
-      - name: Install Python
+      - name: Setup Python
         uses: actions/setup-python@v5
         with:
-          python-version: '3.9'
+          python-version: "3.11"
 
       - name: Install CMake
         uses: lukka/get-cmake@latest
-    
-      - name: Bootstrap dependencies
+
+      - name: Install Strawberry Perl
+        run: choco install strawberryperl -y
+
+      - name: Install Rust
         run: |
-          python -m pip install --upgrade pip
-          python -m pip install cmake
+          curl -L https://win.rustup.rs/x86_64 -o rustup-init.exe
+          rustup-init.exe -y
+          echo "$env:USERPROFILE\.cargo\bin" >> $env:GITHUB_PATH
+
+      - name: Install MSYS2
+        uses: msys2/setup-msys2@v2
+        with:
+          msystem: MINGW64
+          update: true
+          install: >
+            git
+            flex
+            bison
+            nasm
+            unzip
+            zip
+            autoconf
+            automake
+            libtool
+            mingw-w64-x86_64-toolchain
+
+      - name: Install Qt
+        uses: jurplel/install-qt-action@v3
+        with:
+          version: "6.5.3"
+          host: windows
+          target: desktop
+          arch: win64_msvc2019_64
+
+      - name: Configure Environment
+        run: |
+          echo "QT_HOME=$env:Qt5_Dir" >> $env:GITHUB_ENV
+
+      - name: Bootstrap OpenRV
+        run: |
+          python rvbootstrap
 
       - name: Build OpenRV
         run: |
-          cmake -S . -B build
-          cmake --build build --config Release
+          python rvmk
