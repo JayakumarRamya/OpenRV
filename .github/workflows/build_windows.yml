@@ -21,9 +21,6 @@ jobs:
       - name: Install CMake
         uses: lukka/get-cmake@latest
 
-      - name: Install bootstrap
-        run: pip install rvbootstrap
-
       - name: Bootstrap dependencies
         run: rvbootstrap
 
