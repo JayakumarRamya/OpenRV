@@ -22,7 +22,7 @@ jobs:
         uses: lukka/get-cmake@latest
 
       - name: Bootstrap dependencies
-        run: rvbootstrap
+        run: python rvbootstrap.py
 
       - name: Build OpenRV
-        run: rvmk
+        run: python rvmk.py
