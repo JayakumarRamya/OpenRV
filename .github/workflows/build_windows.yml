@@ -61,7 +61,7 @@ jobs:
         shell: bash
         run: |
           source rvcmds.sh
-          rvbootstrap
+          echo "2" | rvbootstrap
           rvmk
 
       - name: Upload artifact
