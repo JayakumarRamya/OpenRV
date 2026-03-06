@@ -8,6 +8,7 @@ jobs:
     runs-on: windows-2022
 
     steps:
+
       - name: Checkout source
         uses: actions/checkout@v4
         with:
@@ -25,10 +26,11 @@ jobs:
         run: choco install strawberryperl -y
 
       - name: Install Rust
+        shell: powershell
         run: |
-          curl -L https://win.rustup.rs/x86_64 -o rustup-init.exe
-          rustup-init.exe -y
-          echo "$env:USERPROFILE\.cargo\bin" >> $env:GITHUB_PATH
+          Invoke-WebRequest https://win.rustup.rs/x86_64 -OutFile rustup-init.exe
+          .\rustup-init.exe -y
+          echo "$env:USERPROFILE\.cargo\bin" | Out-File -FilePath $env:GITHUB_PATH -Encoding utf8 -Append
 
       - name: Install MSYS2
         uses: msys2/setup-msys2@v2
@@ -55,14 +57,23 @@ jobs:
           target: desktop
           arch: win64_msvc2019_64
 
-      - name: Configure Environment
+      - name: Set Qt Environment
+        shell: powershell
         run: |
           echo "QT_HOME=$env:Qt5_Dir" >> $env:GITHUB_ENV
 
       - name: Bootstrap OpenRV
+        shell: powershell
         run: |
           python rvbootstrap
 
       - name: Build OpenRV
+        shell: powershell
         run: |
           python rvmk
+
+      - name: Upload Build Artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: OpenRV-Windows
+          path: build
