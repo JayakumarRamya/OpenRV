@@ -81,18 +81,15 @@ jobs:
 
         git submodule update --init --recursive
 
-        # load OpenRV build commands
-        source rvcmds.sh
+        # IMPORTANT: source with path
+        source ./rvcmds.sh
 
-        # first-time dependency build
         rvbootstrap
 
-        # configure build
         rvcfg \
           -DRV_FFMPEG_NON_FREE_DECODERS_TO_ENABLE="aac;h264;hevc;prores" \
           -DRV_FFMPEG_NON_FREE_ENCODERS_TO_ENABLE="aac"
 
-        # build OpenRV
         rvmk
 
     - name: Upload OpenRV Build
