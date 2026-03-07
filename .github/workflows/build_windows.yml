@@ -9,7 +9,7 @@ jobs:
 
     steps:
 
-    - name: Checkout OpenRV
+    - name: Checkout source
       uses: actions/checkout@v4
       with:
         submodules: recursive
@@ -65,53 +65,35 @@ jobs:
         arch: win64_msvc2019_64
         dir: C:/Qt
 
-    - name: Build OpenRV
+    - name: Configure OpenRV
       shell: msys2 {0}
       run: |
 
         bash -il <<'EOF'
 
-        echo "Starting OpenRV build..."
-
-        export RV_VFX_PLATFORM=CY2024
-        export RV_BUILD_PARALLELISM=8
         export QT_HOME=/c/Qt/6.5.3/msvc2019_64
-
-        export PATH="/c/Program Files/CMake/bin:/c/msys64/mingw64/bin:/c/Users/runneradmin/.cargo/bin:$PATH:/c/Strawberry/perl/bin"
+        export PATH="/c/Program Files/CMake/bin:/c/msys64/mingw64/bin:$PATH:/c/Strawberry/perl/bin"
 
         cd "$GITHUB_WORKSPACE"
 
-        git submodule update --init --recursive
+        mkdir build
+        cd build
 
-        # ensure pip works
-        python3 -m pip install --upgrade pip
-
-        echo "Loading OpenRV commands..."
-        source rvcmds.sh
-
-        # FIX: override toolchain AFTER loading script
-        export RV_TOOLCHAIN="-T v143"
-
-        echo "Cleaning previous build..."
-        rvclean || true
-
-        echo "Running bootstrap..."
-        rvbootstrap
-
-        echo "Enable additional FFmpeg codecs..."
-        rvcfg \
+        cmake .. \
+          -G "Visual Studio 17 2022" \
+          -A x64 \
+          -DRV_VFX_PLATFORM=CY2024 \
+          -DRV_DEPS_QT_LOCATION=$QT_HOME \
           -DRV_FFMPEG_NON_FREE_DECODERS_TO_ENABLE="aac;h264;hevc;prores" \
           -DRV_FFMPEG_NON_FREE_ENCODERS_TO_ENABLE="aac"
 
-        echo "Building OpenRV..."
-        rvmk
-
-        echo "Build finished."
-
         EOF
 
-    - name: Upload OpenRV Build
+    - name: Build OpenRV
+      run: cmake --build build --config Release --parallel 8
+
+    - name: Upload Build
       uses: actions/upload-artifact@v4
       with:
         name: OpenRV-Windows
-        path: _build/stage/app
+        path: build/stage/app
