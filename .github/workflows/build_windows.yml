@@ -9,7 +9,7 @@ jobs:
 
     steps:
 
-    # Checkout source
+    # Checkout repository
     - name: Checkout OpenRV
       uses: actions/checkout@v4
       with:
@@ -33,28 +33,19 @@ jobs:
         host: windows
         target: desktop
         arch: win64_msvc2019_64
-        modules: qtwebengine qtwebsockets qtmultimedia
+        modules: qtwebengine qtwebsockets qtmultimedia qtwebchannel qtpositioning
 
-    # Show Qt location
-    - name: Show Qt path
+    # Show Qt path (debug)
+    - name: Show Qt location
+      shell: powershell
       run: |
-        echo "Qt installed at:"
-        echo $env:QT_ROOT_DIR
+        Write-Host "Qt installed at:"
+        Write-Host $env:QT_ROOT_DIR
 
-    # Cache dependencies to speed up next builds
-    - name: Cache build dependencies
-      uses: actions/cache@v4
-      with:
-        path: |
-          build/_deps
-          build/_deps_build
-        key: openrv-deps-${{ runner.os }}-v1
-
-    # Configure OpenRV
+    # Configure build
     - name: Configure OpenRV
       shell: powershell
       run: |
-
         cmake -B build `
           -G "Visual Studio 17 2022" `
           -A x64 `
@@ -64,20 +55,20 @@ jobs:
           -DRV_FFMPEG_NON_FREE_DECODERS_TO_ENABLE="aac;h264;hevc;prores" `
           -DRV_FFMPEG_NON_FREE_ENCODERS_TO_ENABLE="aac"
 
-    # Build
-    - name: Build OpenRV
+    # Build OpenRV
+    - name: Build
       shell: powershell
       run: |
         cmake --build build --config Release --parallel 8
 
-    # Install build
+    # Install compiled build
     - name: Install OpenRV
       shell: powershell
       run: |
         cmake --install build --prefix install --config Release
 
-    # Upload compiled RV
-    - name: Upload OpenRV artifact
+    # Upload artifact
+    - name: Upload OpenRV build
       uses: actions/upload-artifact@v4
       with:
         name: OpenRV-Windows
