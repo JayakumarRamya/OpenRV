@@ -73,24 +73,31 @@ jobs:
     - name: Build OpenRV
       shell: msys2 {0}
       run: |
+        bash -l <<'EOF'
 
         export RV_VFX_PLATFORM=CY2024
         export RV_BUILD_PARALLELISM=8
+        export QT_HOME=/c/Qt/6.5.3/msvc2019_64
 
-        cd $GITHUB_WORKSPACE
+        cd "$GITHUB_WORKSPACE"
 
         git submodule update --init --recursive
 
-        # IMPORTANT: source with path
+        # load OpenRV build commands
         source ./rvcmds.sh
 
+        # first build
         rvbootstrap
 
+        # enable ffmpeg codecs
         rvcfg \
           -DRV_FFMPEG_NON_FREE_DECODERS_TO_ENABLE="aac;h264;hevc;prores" \
           -DRV_FFMPEG_NON_FREE_ENCODERS_TO_ENABLE="aac"
 
+        # build
         rvmk
+
+        EOF
 
     - name: Upload OpenRV Build
       uses: actions/upload-artifact@v4
