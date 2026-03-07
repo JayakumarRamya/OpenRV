@@ -1,15 +1,16 @@
-name: OpenRV Windows Build
+name: OpenRV Windows Fast Build
 
 on:
   workflow_dispatch:
 
 jobs:
   build:
+
     runs-on: windows-2022
 
     steps:
 
-    - name: Checkout source
+    - name: Checkout
       uses: actions/checkout@v4
       with:
         submodules: recursive
@@ -30,11 +31,16 @@ jobs:
         target: desktop
         arch: win64_msvc2019_64
 
-    - name: Show Qt location
-      run: |
-        echo "Qt installed at: $env:QT_ROOT_DIR"
+    - name: Cache OpenRV Dependencies
+      uses: actions/cache@v4
+      with:
+        path: |
+          build/_deps
+          build/_deps_build
+          build/_install
+        key: openrv-deps-${{ runner.os }}-v1
 
-    - name: Configure OpenRV
+    - name: Configure
       shell: powershell
       run: |
 
@@ -47,17 +53,17 @@ jobs:
           -DRV_FFMPEG_NON_FREE_DECODERS_TO_ENABLE="aac;h264;hevc;prores" `
           -DRV_FFMPEG_NON_FREE_ENCODERS_TO_ENABLE="aac"
 
-    - name: Build OpenRV
+    - name: Build
       shell: powershell
       run: |
         cmake --build build --config Release --parallel 8
 
-    - name: Package OpenRV
+    - name: Install RV
       shell: powershell
       run: |
         cmake --install build --prefix install --config Release
 
-    - name: Upload artifact
+    - name: Upload Build
       uses: actions/upload-artifact@v4
       with:
         name: OpenRV-Windows
