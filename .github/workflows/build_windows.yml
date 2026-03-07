@@ -9,30 +9,24 @@ jobs:
 
     steps:
 
-    - name: Checkout OpenRV
-      uses: actions/checkout@v4
+    - uses: actions/checkout@v4
       with:
         submodules: recursive
 
-    - name: Setup Python
-      uses: actions/setup-python@v5
+    - uses: actions/setup-python@v5
       with:
         python-version: "3.11"
 
-    - name: Install CMake
-      uses: lukka/get-cmake@latest
+    - uses: lukka/get-cmake@latest
 
-    - name: Install Strawberry Perl
-      run: choco install strawberryperl -y
+    - uses: jurplel/install-qt-action@v4
+      with:
+        version: "6.5.3"
+        host: windows
+        target: desktop
+        arch: win64_msvc2019_64
 
-    - name: Install Rust
-      shell: powershell
-      run: |
-        Invoke-WebRequest https://win.rustup.rs/x86_64 -OutFile rustup-init.exe
-        .\rustup-init.exe -y
-        echo "$env:USERPROFILE\.cargo\bin" | Out-File -FilePath $env:GITHUB_PATH -Encoding utf8 -Append
-
-    - name: Install MSYS2
+    - name: Install MSYS2 tools
       uses: msys2/setup-msys2@v2
       with:
         msystem: MINGW64
@@ -56,21 +50,6 @@ jobs:
           mingw-w64-x86_64-glew
           mingw-w64-x86_64-pkg-config
 
-    - name: Install Qt
-      id: qt
-      uses: jurplel/install-qt-action@v4
-      with:
-        version: "6.5.3"
-        host: windows
-        target: desktop
-        arch: win64_msvc2019_64
-
-    - name: Patch MSVC toolchain requirement
-      shell: msys2 {0}
-      run: |
-        cd "$GITHUB_WORKSPACE"
-        sed -i 's/version=14.40//g' rvcmds.sh
-
     - name: Build OpenRV
       shell: msys2 {0}
       run: |
@@ -86,11 +65,11 @@ jobs:
         export Qt6_DIR="$QT_MSYS/lib/cmake/Qt6"
         export CMAKE_PREFIX_PATH="$QT_MSYS"
 
-        export PATH="/c/Program Files/CMake/bin:/c/msys64/mingw64/bin:/c/Users/runneradmin/.cargo/bin:$PATH:/c/Strawberry/perl/bin"
+        export PATH="/c/Program Files/CMake/bin:/c/msys64/mingw64/bin:$PATH"
 
         cd "$GITHUB_WORKSPACE"
 
-        echo "Qt installed here:"
+        echo "Qt location:"
         echo "$QT_MSYS"
 
         ls "$QT_MSYS/lib/cmake/Qt6"
@@ -101,16 +80,13 @@ jobs:
 
         source rvcmds.sh
 
-        rvclean || true
-
         rvbootstrap
 
         rvmk
 
         EOF
 
-    - name: Upload Build
-      uses: actions/upload-artifact@v4
+    - uses: actions/upload-artifact@v4
       with:
         name: OpenRV-Windows
         path: _build/stage/app
