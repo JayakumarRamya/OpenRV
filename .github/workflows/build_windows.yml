@@ -31,8 +31,9 @@ jobs:
         uses: actions/checkout@v4
         with:
           submodules: recursive
+          path: 'C:\OpenRV'
 
-      - name: Setup Python
+      - name: Setup Python 3.11
         uses: actions/setup-python@v5
         with:
           python-version: "3.11"
@@ -43,89 +44,123 @@ jobs:
       - name: Install Python requirements
         run: pip install -r requirements.txt
 
+      - name: Install CMake
+        uses: lukka/get-cmake@latest
+        with:
+          cmakeVersion: 3.31.0
+
       - name: Install system dependencies via Chocolatey
         run: |
           choco install nasm -y
           choco install strawberryperl -y
           choco install winflexbison3 -y
-          choco install cmake -y
-          choco install ninja -y
 
-      - name: Install Qt 6.5.3 with all modules
-        uses: jurplel/install-qt-action@v3
-        with:
-          version: '6.5.3'
-          host: 'windows'
-          target: 'desktop'
-          arch: 'win64_msvc2019_64'
-          modules: 'qtbase qtdeclarative qttools qtwebengine qtwebchannel'
-          cache: 'true'
-          cache-key-prefix: 'install-qt-windows'
+      - name: Install aqtinstall
+        run: python -m pip install aqtinstall
+
+      - name: Install Qt 6.5.3 for CY2024/CY2025/CY2026
+        if: inputs.vfx_platform != 'CY2023'
+        shell: bash
+        run: |
+          python -m aqt install-qt windows desktop 6.5.3 win64_msvc2019_64 \
+            -m qtbase qtdeclarative qttools qtwebengine qtwebchannel qtmultimedia \
+            --outputdir C:/Qt_Install
+
+      - name: Install Qt 5.15.2 for CY2023
+        if: inputs.vfx_platform == 'CY2023'
+        shell: bash
+        run: |
+          python -m aqt install-qt windows desktop 5.15.2 win64_msvc2019_64 \
+            -m qtbase qtdeclarative qttools qtwebengine qtwebchannel qtmultimedia \
+            --outputdir C:/Qt_Install
+
+      - name: Set Qt environment variables
+        shell: bash
+        run: |
+          if [ "${{ inputs.vfx_platform }}" == "CY2023" ]; then
+            echo "QT_HOME=C:/Qt_Install/5.15.2/msvc2019_64" >> $GITHUB_ENV
+            echo "Qt5_DIR=C:/Qt_Install/5.15.2/msvc2019_64" >> $GITHUB_ENV
+          else
+            echo "QT_HOME=C:/Qt_Install/6.5.3/msvc2019_64" >> $GITHUB_ENV
+            echo "Qt6_DIR=C:/Qt_Install/6.5.3/msvc2019_64/lib/cmake/Qt6" >> $GITHUB_ENV
+          fi
 
       - name: Verify Qt installation
         shell: bash
         run: |
-          echo "Qt installation directory:"
-          ls -la "${{ env.Qt5_DIR }}"
-          echo ""
-          echo "Checking for WebEngineCore:"
-          find "${{ env.Qt5_DIR }}" -name "*WebEngineCore*" -type f 2>/dev/null || echo "WebEngineCore not found"
-          echo ""
-          echo "Checking for WebEngine libraries:"
-          find "${{ env.Qt5_DIR }}" -name "*WebEngine*" -type d 2>/dev/null | head -20
+          if [ "${{ inputs.vfx_platform }}" == "CY2023" ]; then
+            echo "Checking Qt 5.15.2 installation:"
+            ls -la C:/Qt_Install/5.15.2/msvc2019_64/lib/ 2>/dev/null | head -20
+          else
+            echo "Checking Qt 6.5.3 installation:"
+            ls -la C:/Qt_Install/6.5.3/msvc2019_64/lib/cmake/Qt6/ 2>/dev/null
+            echo ""
+            echo "Checking for WebEngineCore:"
+            ls -la C:/Qt_Install/6.5.3/msvc2019_64/lib/cmake/Qt6WebEngineCore/ 2>/dev/null || echo "WebEngineCore config directory"
+          fi
 
       - name: Create build directory
         shell: bash
-        run: mkdir -p build
+        run: mkdir -p C:/OpenRV/build
 
       - name: Configure CMake
         shell: bash
+        working-directory: C:/OpenRV/build
         env:
           RV_VFX_PLATFORM: ${{ inputs.vfx_platform }}
           RV_BUILD_TYPE: ${{ inputs.build_type }}
           WIN_PERL: 'c:/Strawberry/perl/bin'
-          Qt6_DIR: '${{ env.Qt5_DIR }}/lib/cmake/Qt6'
         run: |
-          cd build
-          cmake .. \
-            -G "Visual Studio 17 2022" \
-            -A x64 \
-            -DCMAKE_BUILD_TYPE=${{ env.RV_BUILD_TYPE }} \
-            -DQt6_DIR="${{ env.Qt6_DIR }}" \
-            -DCMAKE_PREFIX_PATH="${{ env.Qt5_DIR }}" \
-            -DRV_VFX_PLATFORM=${{ env.RV_VFX_PLATFORM }} \
-            -DRV_DEPS_WIN_PERL_ROOT="${{ env.WIN_PERL }}"
+          if [ "${{ inputs.vfx_platform }}" == "CY2023" ]; then
+            cmake .. \
+              -G "Visual Studio 17 2022" \
+              -A x64 \
+              -DCMAKE_BUILD_TYPE=${{ env.RV_BUILD_TYPE }} \
+              -DCMAKE_PREFIX_PATH="C:/Qt_Install/5.15.2/msvc2019_64" \
+              -DQt5_DIR="C:/Qt_Install/5.15.2/msvc2019_64/lib/cmake/Qt5" \
+              -DRV_VFX_PLATFORM=${{ env.RV_VFX_PLATFORM }} \
+              -DRV_DEPS_WIN_PERL_ROOT="${{ env.WIN_PERL }}"
+          else
+            cmake .. \
+              -G "Visual Studio 17 2022" \
+              -A x64 \
+              -DCMAKE_BUILD_TYPE=${{ env.RV_BUILD_TYPE }} \
+              -DCMAKE_PREFIX_PATH="C:/Qt_Install/6.5.3/msvc2019_64" \
+              -DQt6_DIR="C:/Qt_Install/6.5.3/msvc2019_64/lib/cmake/Qt6" \
+              -DRV_VFX_PLATFORM=${{ env.RV_VFX_PLATFORM }} \
+              -DRV_DEPS_WIN_PERL_ROOT="${{ env.WIN_PERL }}"
+          fi
 
       - name: Build OpenRV
         shell: bash
+        working-directory: C:/OpenRV/build
         run: |
-          cd build
           cmake --build . --config ${{ inputs.build_type }} --parallel 4
 
       - name: Run tests
         shell: bash
+        working-directory: C:/OpenRV/build
         continue-on-error: true
         run: |
-          cd build
           ctest --test-dir . --output-on-failure -C ${{ inputs.build_type }}
 
       - name: Upload build artifact
         uses: actions/upload-artifact@v4
-        if: always()
+        if: success()
         with:
           name: OpenRV-Windows-${{ inputs.build_type }}-${{ inputs.vfx_platform }}
-          path: build/stage
+          path: C:/OpenRV/build/stage
           if-no-files-found: warn
           retention-days: 30
 
-      - name: Upload build logs on failure
+      - name: Upload CMake logs on failure
         uses: actions/upload-artifact@v4
         if: failure()
         with:
-          name: OpenRV-Windows-BuildLogs-${{ inputs.build_type }}
+          name: OpenRV-Windows-CMakeLogs-${{ inputs.build_type }}-${{ inputs.vfx_platform }}
           path: |
-            build/CMakeFiles/CMakeError.log
-            build/CMakeFiles/CMakeOutput.log
-            build/CMakeOutput.log
+            C:/OpenRV/build/CMakeFiles/CMakeError.log
+            C:/OpenRV/build/CMakeFiles/CMakeOutput.log
+            C:/OpenRV/build/CMakeOutput.log
           if-no-files-found: ignore
           retention-days: 7
