@@ -8,8 +8,7 @@ jobs:
     runs-on: windows-2022
 
     steps:
-
-    - name: Checkout OpenRV
+    - name: Checkout source
       uses: actions/checkout@v4
       with:
         submodules: recursive
@@ -18,6 +17,13 @@ jobs:
       uses: actions/setup-python@v5
       with:
         python-version: "3.11"
+
+    # The build scripts expect a 'python3' command.
+    - name: Create python3.exe alias
+      run: |
+        $pythonPath = (Get-Command python).Source
+        Copy-Item $pythonPath "$(Split-Path $pythonPath)\python3.exe"
+      shell: powershell
 
     - name: Install CMake
       uses: lukka/get-cmake@latest
@@ -65,48 +71,38 @@ jobs:
         arch: win64_msvc2019_64
         dir: C:/Qt
 
+    # Main build step – runs inside the MSYS2 MINGW64 shell.
     - name: Build OpenRV
       shell: msys2 {0}
       run: |
-
-        bash -il <<'EOF'
-
-        echo "Starting OpenRV build..."
-
+        # Set environment variables for the build.
         export RV_VFX_PLATFORM=CY2024
-        export RV_BUILD_PARALLELISM=8
+        export RV_BUILD_PARALLELISM=2          # GitHub runner has 2 cores
         export QT_HOME=/c/Qt/6.5.3/msvc2019_64
 
-        # Fix MSVC version issue
+        # The script forces an exact MSVC toolset version (14.40) by default.
+        # Override it to use the latest v143 toolset available.
         export RV_TOOLCHAIN="-T v143"
-
-        # Ensure tools are visible
-        export PATH="/c/Program Files/CMake/bin:/c/msys64/mingw64/bin:/c/Users/runneradmin/.cargo/bin:$PATH:/c/Strawberry/perl/bin"
 
         cd "$GITHUB_WORKSPACE"
 
-        git submodule update --init --recursive
-
-        # Ensure pip works
-        python3 -m pip install --upgrade pip
-
-        echo "Loading OpenRV build commands..."
+        # Source the command aliases.
         source rvcmds.sh
 
-        echo "Running bootstrap build..."
+        # Verify that python3 is available (it should be thanks to the alias we created).
+        python3 --version
+
+        # First-time setup: creates .venv, installs Python dependencies, and builds.
         rvbootstrap
 
-        echo "Enabling additional FFmpeg codecs..."
+        # (Optional) Reconfigure with non‑free FFmpeg codecs.
+        # Adjust the list according to your needs.
         rvcfg \
           -DRV_FFMPEG_NON_FREE_DECODERS_TO_ENABLE="aac;h264;hevc;prores" \
           -DRV_FFMPEG_NON_FREE_ENCODERS_TO_ENABLE="aac"
 
-        echo "Building OpenRV..."
-        rvmk
-
-        echo "Build finished."
-
-        EOF
+        # Build again (the second build will be incremental).
+        rvbuild
 
     - name: Upload OpenRV Build
       uses: actions/upload-artifact@v4
