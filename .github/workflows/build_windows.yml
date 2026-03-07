@@ -1,55 +1,43 @@
-name: Build OpenRV
+# This is a GitHub Actions workflow file for building OpenRV on Windows with specific dependencies.
+
+name: Build OpenRV on Windows
 
 on:
-  workflow_dispatch:
+  push:
+    branches:
+      - main
 
 jobs:
   build:
-    runs-on: windows-2022
+    runs-on: windows-latest
 
     steps:
-      - name: Checkout OpenRV
-        uses: actions/checkout@v4
+      - name: Checkout code
+        uses: actions/checkout@v2
+
+      - name: Set up Qt 5.15
+        uses: 'qt/actions/setup-qt@v1'
         with:
-          submodules: recursive
+          qt-version: '5.15'
 
-      - name: Setup Python
-        uses: actions/setup-python@v5
-        with:
-          python-version: "3.11"
-
-      - name: Upgrade pip
-        run: python -m pip install --upgrade pip
-
-      - name: Install Python requirements
-        run: pip install -r requirements.txt
-
-      - name: Install system dependencies
+      - name: Install dependencies
         run: |
-          choco install nasm -y
-          choco install strawberryperl -y
-          choco install winflexbison3 -y
-          choco install cmake -y
-
-      - name: Create build directory
-        shell: bash
-        run: mkdir -p build
+          choco install ffmpeg
+          choco install openimageio
+          choco install openexr
 
       - name: Configure CMake
-        shell: bash
+        run: |
+          mkdir build
+          cd build
+          cmake .. -G "Visual Studio 16 2019" -DQt5_DIR="C:\Qt\5.15\msvc2019_64\lib\CMake\Qt5"
+
+      - name: Build the project
         run: |
           cd build
-          cmake .. -G "Visual Studio 17 2022" -A x64 -DCMAKE_BUILD_TYPE=Release
+          cmake --build . --config Release
 
-      - name: Build OpenRV
-        shell: bash
+      - name: Run tests
         run: |
           cd build
-          cmake --build . --config Release --parallel 4
-
-      - name: Upload RV build artifact
-        uses: actions/upload-artifact@v4
-        with:
-          name: OpenRV-Windows
-          path: build/Release
-          if-no-files-found: warn
+          ctest
