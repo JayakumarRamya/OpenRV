@@ -8,7 +8,6 @@ jobs:
     runs-on: windows-2022
 
     steps:
-
       - name: Checkout OpenRV
         uses: actions/checkout@v4
         with:
@@ -19,24 +18,39 @@ jobs:
         with:
           python-version: "3.11"
 
-      - name: Install Python requirements
-        run: |
-          python -m pip install --upgrade pip
-          pip install -r requirements.txt
+      - name: Upgrade pip
+        run: python -m pip install --upgrade pip
 
-      - name: Install dependencies
+      - name: Install Python requirements
+        run: pip install -r requirements.txt
+
+      - name: Install system dependencies
         run: |
           choco install nasm -y
           choco install strawberryperl -y
           choco install winflexbison3 -y
 
-      - name: Bootstrap OpenRV
+      - name: Run OpenRV bootstrap
         shell: bash
         run: |
-          ./rvbootstrap
+          cd rvbootstrap
+          python bootstrap.py --platform windows --build-type Release
 
-      - name: Upload RV build
+      - name: Configure CMake
+        shell: bash
+        run: |
+          mkdir -p build
+          cd build
+          cmake .. -G "Visual Studio 17 2022" -A x64
+
+      - name: Build OpenRV
+        shell: bash
+        run: |
+          cd build
+          cmake --build . --config Release
+
+      - name: Upload RV build artifact
         uses: actions/upload-artifact@v4
         with:
           name: OpenRV-Windows
-          path: _build/stage/app
+          path: build/Release
