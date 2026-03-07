@@ -68,7 +68,8 @@ jobs:
     - name: Build OpenRV
       shell: msys2 {0}
       run: |
-        bash -l <<'EOF'
+
+        bash -il <<'EOF'
 
         export RV_VFX_PLATFORM=CY2024
         export RV_BUILD_PARALLELISM=8
@@ -78,21 +79,14 @@ jobs:
 
         git submodule update --init --recursive
 
-        # enable alias commands defined in rvcmds.sh
-        shopt -s expand_aliases
-
-        # load OpenRV build commands
         source rvcmds.sh
 
-        # first build (downloads dependencies and builds)
         rvbootstrap
 
-        # configure ffmpeg codecs
         rvcfg \
           -DRV_FFMPEG_NON_FREE_DECODERS_TO_ENABLE="aac;h264;hevc;prores" \
           -DRV_FFMPEG_NON_FREE_ENCODERS_TO_ENABLE="aac"
 
-        # build OpenRV
         rvmk
 
         EOF
