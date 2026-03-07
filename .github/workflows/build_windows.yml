@@ -9,7 +9,7 @@ jobs:
 
     steps:
 
-    - name: Checkout source
+    - name: Checkout OpenRV
       uses: actions/checkout@v4
       with:
         submodules: recursive
@@ -71,30 +71,40 @@ jobs:
 
         bash -il <<'EOF'
 
+        echo "Starting OpenRV build..."
+
         export RV_VFX_PLATFORM=CY2024
         export RV_BUILD_PARALLELISM=8
         export QT_HOME=/c/Qt/6.5.3/msvc2019_64
 
-        # Ensure correct tools are visible to MSYS2
-        export PATH="/c/Program Files/CMake/bin:/c/hostedtoolcache/windows/Python/3.11.*/x64:/c/Users/runneradmin/.cargo/bin:/mingw64/bin:$PATH:/c/Strawberry/perl/bin"
+        # Fix MSVC version issue
+        export RV_TOOLCHAIN="-T v143"
+
+        # Ensure tools are visible
+        export PATH="/c/Program Files/CMake/bin:/c/msys64/mingw64/bin:/c/Users/runneradmin/.cargo/bin:$PATH:/c/Strawberry/perl/bin"
 
         cd "$GITHUB_WORKSPACE"
 
         git submodule update --init --recursive
 
-        # Load OpenRV build aliases
+        # Ensure pip works
+        python3 -m pip install --upgrade pip
+
+        echo "Loading OpenRV build commands..."
         source rvcmds.sh
 
-        # First-time bootstrap (creates .venv, installs deps, builds)
+        echo "Running bootstrap build..."
         rvbootstrap
 
-        # Enable optional FFmpeg codecs
+        echo "Enabling additional FFmpeg codecs..."
         rvcfg \
           -DRV_FFMPEG_NON_FREE_DECODERS_TO_ENABLE="aac;h264;hevc;prores" \
           -DRV_FFMPEG_NON_FREE_ENCODERS_TO_ENABLE="aac"
 
-        # Build OpenRV
+        echo "Building OpenRV..."
         rvmk
+
+        echo "Build finished."
 
         EOF
 
