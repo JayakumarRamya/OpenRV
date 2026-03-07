@@ -1,4 +1,4 @@
-name: OpenRV Windows Fast Build
+name: OpenRV Windows Build
 
 on:
   workflow_dispatch:
@@ -9,16 +9,23 @@ jobs:
 
     steps:
 
-    - uses: actions/checkout@v4
+    # Checkout source
+    - name: Checkout OpenRV
+      uses: actions/checkout@v4
       with:
         submodules: recursive
 
-    - uses: actions/setup-python@v5
+    # Python
+    - name: Setup Python
+      uses: actions/setup-python@v5
       with:
         python-version: "3.11"
 
-    - uses: lukka/get-cmake@latest
+    # CMake
+    - name: Install CMake
+      uses: lukka/get-cmake@latest
 
+    # Install Qt with required modules
     - name: Install Qt
       uses: jurplel/install-qt-action@v4
       with:
@@ -26,11 +33,28 @@ jobs:
         host: windows
         target: desktop
         arch: win64_msvc2019_64
-        modules: qtwebengine qtwebsockets qtmultimedia qtdeclarative
+        modules: qtwebengine qtwebsockets qtmultimedia
 
+    # Show Qt location
+    - name: Show Qt path
+      run: |
+        echo "Qt installed at:"
+        echo $env:QT_ROOT_DIR
+
+    # Cache dependencies to speed up next builds
+    - name: Cache build dependencies
+      uses: actions/cache@v4
+      with:
+        path: |
+          build/_deps
+          build/_deps_build
+        key: openrv-deps-${{ runner.os }}-v1
+
+    # Configure OpenRV
     - name: Configure OpenRV
       shell: powershell
       run: |
+
         cmake -B build `
           -G "Visual Studio 17 2022" `
           -A x64 `
@@ -40,17 +64,21 @@ jobs:
           -DRV_FFMPEG_NON_FREE_DECODERS_TO_ENABLE="aac;h264;hevc;prores" `
           -DRV_FFMPEG_NON_FREE_ENCODERS_TO_ENABLE="aac"
 
-    - name: Build
+    # Build
+    - name: Build OpenRV
       shell: powershell
       run: |
         cmake --build build --config Release --parallel 8
 
-    - name: Install
+    # Install build
+    - name: Install OpenRV
       shell: powershell
       run: |
         cmake --install build --prefix install --config Release
 
-    - uses: actions/upload-artifact@v4
+    # Upload compiled RV
+    - name: Upload OpenRV artifact
+      uses: actions/upload-artifact@v4
       with:
         name: OpenRV-Windows
         path: install
