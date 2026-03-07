@@ -1,4 +1,4 @@
-name: OpenRV Windows Build
+name: OpenRV Windows
 
 on:
   workflow_dispatch:
@@ -7,9 +7,14 @@ jobs:
   build:
     runs-on: windows-2022
 
+    env:
+      QT_HOME: C:/Qt/6.5.3/msvc2019_64
+      Qt6_DIR: C:/Qt/6.5.3/msvc2019_64/lib/cmake/Qt6
+      CMAKE_PREFIX_PATH: C:/Qt/6.5.3/msvc2019_64
+
     steps:
 
-    - name: Checkout OpenRV
+    - name: Checkout source
       uses: actions/checkout@v4
       with:
         submodules: recursive
@@ -78,8 +83,6 @@ jobs:
 
         bash -il <<'EOF'
 
-        echo "===== STARTING OPENRV BUILD ====="
-
         export RV_VFX_PLATFORM=CY2024
         export RV_BUILD_PARALLELISM=8
 
@@ -99,24 +102,21 @@ jobs:
 
         rvclean || true
 
-        echo "Running bootstrap"
+        echo "Running bootstrap build"
         rvbootstrap
 
-        echo "Enable codecs"
+        echo "Enable extra FFmpeg codecs"
         rvcfg \
           -DQt6_DIR=$Qt6_DIR \
           -DCMAKE_PREFIX_PATH=$CMAKE_PREFIX_PATH \
           -DRV_FFMPEG_NON_FREE_DECODERS_TO_ENABLE="aac;h264;hevc;prores" \
           -DRV_FFMPEG_NON_FREE_ENCODERS_TO_ENABLE="aac"
 
-        echo "Building OpenRV"
         rvmk
-
-        echo "===== BUILD FINISHED ====="
 
         EOF
 
-    - name: Upload OpenRV Build
+    - name: Upload OpenRV
       uses: actions/upload-artifact@v4
       with:
         name: OpenRV-Windows
