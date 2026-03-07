@@ -57,18 +57,19 @@ jobs:
           mingw-w64-x86_64-pkg-config
 
     - name: Install Qt
+      id: qt
       uses: jurplel/install-qt-action@v4
       with:
         version: "6.5.3"
         host: windows
         target: desktop
         arch: win64_msvc2019_64
-        dir: C:/Qt
 
-    - name: Patch OpenRV MSVC requirement
+    - name: Patch OpenRV toolchain requirement
       shell: msys2 {0}
       run: |
         cd "$GITHUB_WORKSPACE"
+        echo "Removing forced MSVC 14.40 requirement"
         sed -i 's/version=14.40//g' rvcmds.sh
 
     - name: Build OpenRV
@@ -77,19 +78,27 @@ jobs:
 
         bash -il <<'EOF'
 
+        echo "===== STARTING OPENRV BUILD ====="
+
         export RV_VFX_PLATFORM=CY2024
         export RV_BUILD_PARALLELISM=8
 
-        export QT_HOME=/c/Qt/6.5.3/msvc2019_64
-        export Qt6_DIR=/c/Qt/6.5.3/msvc2019_64/lib/cmake/Qt6
-        export CMAKE_PREFIX_PATH=/c/Qt/6.5.3/msvc2019_64
+        # Convert Qt path to MSYS format
+        QT_MSYS=$(cygpath "$QT_ROOT_DIR")
+
+        export QT_HOME="$QT_MSYS"
+        export Qt6_DIR="$QT_MSYS/lib/cmake/Qt6"
+        export CMAKE_PREFIX_PATH="$QT_MSYS"
 
         export PATH="/c/Program Files/CMake/bin:/c/msys64/mingw64/bin:/c/Users/runneradmin/.cargo/bin:$PATH:/c/Strawberry/perl/bin"
 
         cd "$GITHUB_WORKSPACE"
 
-        echo "Verify Qt installation"
-        ls /c/Qt/6.5.3/msvc2019_64/lib/cmake/Qt6
+        echo "Qt path:"
+        echo "$QT_MSYS"
+
+        echo "Checking Qt installation:"
+        ls "$QT_MSYS/lib/cmake/Qt6"
 
         git submodule update --init --recursive
 
@@ -99,19 +108,23 @@ jobs:
 
         rvclean || true
 
+        echo "Running bootstrap build"
         rvbootstrap
 
+        echo "Reconfiguring with Qt path"
         rvcfg \
-          -DQt6_DIR=/c/Qt/6.5.3/msvc2019_64/lib/cmake/Qt6 \
-          -DCMAKE_PREFIX_PATH=/c/Qt/6.5.3/msvc2019_64 \
+          -DQt6_DIR="$Qt6_DIR" \
+          -DCMAKE_PREFIX_PATH="$CMAKE_PREFIX_PATH" \
           -DRV_FFMPEG_NON_FREE_DECODERS_TO_ENABLE="aac;h264;hevc;prores" \
           -DRV_FFMPEG_NON_FREE_ENCODERS_TO_ENABLE="aac"
 
         rvmk
 
+        echo "===== BUILD FINISHED ====="
+
         EOF
 
-    - name: Upload Build
+    - name: Upload OpenRV build
       uses: actions/upload-artifact@v4
       with:
         name: OpenRV-Windows
