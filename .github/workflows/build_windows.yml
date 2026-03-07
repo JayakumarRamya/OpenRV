@@ -7,14 +7,9 @@ jobs:
   build:
     runs-on: windows-2022
 
-    env:
-      QT_HOME: C:/Qt/6.5.3/msvc2019_64
-      Qt6_DIR: C:/Qt/6.5.3/msvc2019_64/lib/cmake/Qt6
-      CMAKE_PREFIX_PATH: C:/Qt/6.5.3/msvc2019_64
-
     steps:
 
-    - name: Checkout source
+    - name: Checkout OpenRV
       uses: actions/checkout@v4
       with:
         submodules: recursive
@@ -70,11 +65,10 @@ jobs:
         arch: win64_msvc2019_64
         dir: C:/Qt
 
-    - name: Patch OpenRV toolchain
+    - name: Patch OpenRV MSVC requirement
       shell: msys2 {0}
       run: |
         cd "$GITHUB_WORKSPACE"
-        echo "Removing forced MSVC 14.40 requirement"
         sed -i 's/version=14.40//g' rvcmds.sh
 
     - name: Build OpenRV
@@ -94,6 +88,9 @@ jobs:
 
         cd "$GITHUB_WORKSPACE"
 
+        echo "Verify Qt installation"
+        ls /c/Qt/6.5.3/msvc2019_64/lib/cmake/Qt6
+
         git submodule update --init --recursive
 
         python3 -m pip install --upgrade pip
@@ -102,13 +99,11 @@ jobs:
 
         rvclean || true
 
-        echo "Running bootstrap build"
         rvbootstrap
 
-        echo "Enable extra FFmpeg codecs"
         rvcfg \
-          -DQt6_DIR=$Qt6_DIR \
-          -DCMAKE_PREFIX_PATH=$CMAKE_PREFIX_PATH \
+          -DQt6_DIR=/c/Qt/6.5.3/msvc2019_64/lib/cmake/Qt6 \
+          -DCMAKE_PREFIX_PATH=/c/Qt/6.5.3/msvc2019_64 \
           -DRV_FFMPEG_NON_FREE_DECODERS_TO_ENABLE="aac;h264;hevc;prores" \
           -DRV_FFMPEG_NON_FREE_ENCODERS_TO_ENABLE="aac"
 
@@ -116,7 +111,7 @@ jobs:
 
         EOF
 
-    - name: Upload OpenRV
+    - name: Upload Build
       uses: actions/upload-artifact@v4
       with:
         name: OpenRV-Windows
