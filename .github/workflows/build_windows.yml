@@ -1,4 +1,4 @@
-name: OpenRV Windows
+name: OpenRV Windows Build
 
 on:
   workflow_dispatch:
@@ -9,7 +9,7 @@ jobs:
 
     steps:
 
-    - name: Checkout OpenRV
+    - name: Checkout source
       uses: actions/checkout@v4
       with:
         submodules: recursive
@@ -30,24 +30,35 @@ jobs:
         target: desktop
         arch: win64_msvc2019_64
 
-    - name: Configure OpenRV
+    - name: Show Qt location
       run: |
-        echo Qt installed at %QT_ROOT_DIR%
+        echo "Qt installed at: $env:QT_ROOT_DIR"
 
-        cmake -B build ^
-          -G "Visual Studio 17 2022" ^
-          -A x64 ^
-          -DRV_VFX_PLATFORM=CY2024 ^
-          -DCMAKE_PREFIX_PATH="%QT_ROOT_DIR%" ^
-          -DRV_FFMPEG_NON_FREE_DECODERS_TO_ENABLE="aac;h264;hevc;prores" ^
+    - name: Configure OpenRV
+      shell: powershell
+      run: |
+
+        cmake -B build `
+          -G "Visual Studio 17 2022" `
+          -A x64 `
+          -DRV_VFX_PLATFORM=CY2024 `
+          -DRV_DEPS_QT_LOCATION="$env:QT_ROOT_DIR" `
+          -DCMAKE_PREFIX_PATH="$env:QT_ROOT_DIR" `
+          -DRV_FFMPEG_NON_FREE_DECODERS_TO_ENABLE="aac;h264;hevc;prores" `
           -DRV_FFMPEG_NON_FREE_ENCODERS_TO_ENABLE="aac"
 
     - name: Build OpenRV
+      shell: powershell
       run: |
         cmake --build build --config Release --parallel 8
 
-    - name: Upload OpenRV build
+    - name: Package OpenRV
+      shell: powershell
+      run: |
+        cmake --install build --prefix install --config Release
+
+    - name: Upload artifact
       uses: actions/upload-artifact@v4
       with:
         name: OpenRV-Windows
-        path: build/stage/app
+        path: install
