@@ -71,35 +71,40 @@ jobs:
 
         bash -il <<'EOF'
 
-        echo "Starting OpenRV build..."
+        echo "===== STARTING OPENRV BUILD ====="
 
         export RV_VFX_PLATFORM=CY2024
         export RV_BUILD_PARALLELISM=8
 
+        # Qt paths
         export QT_HOME=/c/Qt/6.5.3/msvc2019_64
+        export Qt6_DIR=/c/Qt/6.5.3/msvc2019_64/lib/cmake/Qt6
         export CMAKE_PREFIX_PATH=/c/Qt/6.5.3/msvc2019_64
 
+        # Fix MSVC toolchain mismatch
+        export RV_TOOLCHAIN="-T v143"
+
+        # Build tools
         export PATH="/c/Program Files/CMake/bin:/c/msys64/mingw64/bin:/c/Users/runneradmin/.cargo/bin:$PATH:/c/Strawberry/perl/bin"
 
         cd "$GITHUB_WORKSPACE"
 
+        echo "Updating submodules..."
         git submodule update --init --recursive
 
+        echo "Updating pip..."
         python3 -m pip install --upgrade pip
 
         echo "Loading OpenRV build commands..."
         source rvcmds.sh
 
-        # FIX MSVC TOOLCHAIN
-        export RV_TOOLCHAIN="-T v143"
-
         echo "Cleaning previous builds..."
         rvclean || true
 
-        echo "Running bootstrap build..."
+        echo "Running bootstrap..."
         rvbootstrap
 
-        echo "Enabling additional FFmpeg codecs..."
+        echo "Enabling FFmpeg codecs..."
         rvcfg \
           -DRV_FFMPEG_NON_FREE_DECODERS_TO_ENABLE="aac;h264;hevc;prores" \
           -DRV_FFMPEG_NON_FREE_ENCODERS_TO_ENABLE="aac"
@@ -107,7 +112,7 @@ jobs:
         echo "Building OpenRV..."
         rvmk
 
-        echo "Build finished."
+        echo "===== BUILD FINISHED ====="
 
         EOF
 
