@@ -65,11 +65,10 @@ jobs:
         target: desktop
         arch: win64_msvc2019_64
 
-    - name: Patch OpenRV toolchain requirement
+    - name: Patch MSVC toolchain requirement
       shell: msys2 {0}
       run: |
         cd "$GITHUB_WORKSPACE"
-        echo "Removing forced MSVC 14.40 requirement"
         sed -i 's/version=14.40//g' rvcmds.sh
 
     - name: Build OpenRV
@@ -78,12 +77,9 @@ jobs:
 
         bash -il <<'EOF'
 
-        echo "===== STARTING OPENRV BUILD ====="
-
         export RV_VFX_PLATFORM=CY2024
         export RV_BUILD_PARALLELISM=8
 
-        # Convert Qt path to MSYS format
         QT_MSYS=$(cygpath "$QT_ROOT_DIR")
 
         export QT_HOME="$QT_MSYS"
@@ -94,10 +90,9 @@ jobs:
 
         cd "$GITHUB_WORKSPACE"
 
-        echo "Qt path:"
+        echo "Qt installed here:"
         echo "$QT_MSYS"
 
-        echo "Checking Qt installation:"
         ls "$QT_MSYS/lib/cmake/Qt6"
 
         git submodule update --init --recursive
@@ -108,23 +103,13 @@ jobs:
 
         rvclean || true
 
-        echo "Running bootstrap build"
         rvbootstrap
-
-        echo "Reconfiguring with Qt path"
-        rvcfg \
-          -DQt6_DIR="$Qt6_DIR" \
-          -DCMAKE_PREFIX_PATH="$CMAKE_PREFIX_PATH" \
-          -DRV_FFMPEG_NON_FREE_DECODERS_TO_ENABLE="aac;h264;hevc;prores" \
-          -DRV_FFMPEG_NON_FREE_ENCODERS_TO_ENABLE="aac"
 
         rvmk
 
-        echo "===== BUILD FINISHED ====="
-
         EOF
 
-    - name: Upload OpenRV build
+    - name: Upload Build
       uses: actions/upload-artifact@v4
       with:
         name: OpenRV-Windows
