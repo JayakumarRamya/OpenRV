@@ -68,11 +68,8 @@ jobs:
     - name: Patch OpenRV toolchain
       shell: msys2 {0}
       run: |
-
         cd "$GITHUB_WORKSPACE"
-
-        echo "Removing forced MSVC 14.40 requirement..."
-
+        echo "Removing forced MSVC 14.40 requirement"
         sed -i 's/version=14.40//g' rvcmds.sh
 
     - name: Build OpenRV
@@ -81,7 +78,7 @@ jobs:
 
         bash -il <<'EOF'
 
-        echo "Starting OpenRV build"
+        echo "===== STARTING OPENRV BUILD ====="
 
         export RV_VFX_PLATFORM=CY2024
         export RV_BUILD_PARALLELISM=8
@@ -102,15 +99,20 @@ jobs:
 
         rvclean || true
 
+        echo "Running bootstrap"
         rvbootstrap
 
+        echo "Enable codecs"
         rvcfg \
+          -DQt6_DIR=$Qt6_DIR \
+          -DCMAKE_PREFIX_PATH=$CMAKE_PREFIX_PATH \
           -DRV_FFMPEG_NON_FREE_DECODERS_TO_ENABLE="aac;h264;hevc;prores" \
           -DRV_FFMPEG_NON_FREE_ENCODERS_TO_ENABLE="aac"
 
+        echo "Building OpenRV"
         rvmk
 
-        echo "Build finished"
+        echo "===== BUILD FINISHED ====="
 
         EOF
 
