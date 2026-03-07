@@ -33,6 +33,9 @@ jobs:
       - name: Install Flex and Bison
         run: choco install winflexbison3 -y
 
+      - name: Install CMake
+        uses: lukka/get-cmake@latest
+
       - name: Install Qt
         uses: jurplel/install-qt-action@v4
         with:
