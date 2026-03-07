@@ -30,7 +30,7 @@ jobs:
       - name: Install NASM
         run: choco install nasm -y
 
-      - name: Install Flex and Bison
+      - name: Install Flex/Bison
         run: choco install winflexbison3 -y
 
       - name: Install CMake
@@ -48,19 +48,21 @@ jobs:
       - name: Configure OpenRV
         shell: powershell
         run: |
+          $flex="C:\ProgramData\chocolatey\bin\win_flex.exe"
+
           cmake -B build `
           -G "Visual Studio 17 2022" `
           -A x64 `
           -DRV_VFX_PLATFORM=CY2024 `
+          -DFLEX_EXECUTABLE="$flex" `
           -DRV_DEPS_QT_LOCATION="$env:QT_ROOT_DIR" `
           -DCMAKE_PREFIX_PATH="$env:QT_ROOT_DIR" `
-          -DRV_DEPS_WIN_PERL_ROOT="C:/Strawberry/perl/bin" `
-          -DFLEX_EXECUTABLE="C:/ProgramData/chocolatey/bin/win_flex.exe"
+          -DRV_DEPS_WIN_PERL_ROOT="C:/Strawberry/perl/bin"
 
-      - name: Build
+      - name: Build OpenRV
         run: cmake --build build --config Release --parallel 8
 
-      - name: Install
+      - name: Install OpenRV
         run: cmake --install build --prefix install --config Release
 
       - name: Upload artifact
