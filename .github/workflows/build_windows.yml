@@ -1,5 +1,3 @@
-# This is a GitHub Actions workflow file for building OpenRV on Windows with specific dependencies.
-
 name: Build OpenRV on Windows
 
 on:
