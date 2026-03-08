@@ -19,32 +19,53 @@ jobs:
       with:
         python-version: "3.11"
 
-    - name: Upgrade pip
-      run: python -m pip install --upgrade pip
-
     - name: Install Python requirements
-      run: pip install -r requirements.txt
-
-    - name: Install Chocolatey dependencies
       run: |
-        choco install winflexbison -y
-        choco install pkgconfiglite -y
-        choco install nasm -y
-        choco install cmake -y
+        python -m pip install --upgrade pip
+        pip install pyyaml requests wheel pyzstd py7zr pre-commit numpy
 
-    - name: Add winflexbison to PATH
-      run: |
-        echo "C:\ProgramData\chocolatey\lib\winflexbison\tools" >> $env:GITHUB_PATH
+    - name: Install MSYS2
+      uses: msys2/setup-msys2@v2
+      with:
+        msystem: MINGW64
+        install: >
+          autoconf
+          automake
+          bison
+          flex
+          git
+          libtool
+          nasm
+          p7zip
+          patch
+          unzip
+          zip
+          mingw-w64-x86_64-toolchain
+          mingw-w64-x86_64-meson
+          mingw-w64-x86_64-autotools
+          mingw-w64-x86_64-libarchive
+          mingw-w64-x86_64-glew
 
-    - name: Run rvbootstrap
+    - name: Install Strawberry Perl
+      run: choco install strawberryperl -y
+
+    - name: Install Rust
+      uses: dtolnay/rust-toolchain@stable
+
+    - name: Bootstrap OpenRV
       shell: bash
       run: |
-        python rvbootstrap
-
-    - name: Configure CMake
-      run: |
-        cmake -S . -B build -G "Visual Studio 17 2022" -A x64
+        source rvcmds.sh
+        rvbootstrap
 
     - name: Build OpenRV
+      shell: bash
       run: |
-        cmake --build build --config Release --target rv
+        source rvcmds.sh
+        rvmk
+
+    - name: Upload RV Build
+      uses: actions/upload-artifact@v4
+      with:
+        name: openrv-windows
+        path: _build/stage/app
