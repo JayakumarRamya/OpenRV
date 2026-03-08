@@ -36,17 +36,7 @@ jobs:
         choco install strawberryperl nasm winflexbison pkgconfiglite cmake -y
         python -m pip install --upgrade pip
         pip install pyyaml requests wheel numpy
-
-        # make chocolatey tools visible
         echo "C:\ProgramData\chocolatey\bin" >> $env:GITHUB_PATH
-
-    - name: Create flex/bison wrappers
-      shell: powershell
-      run: |
-        Copy-Item C:\ProgramData\chocolatey\bin\win_flex.exe `
-                  C:\ProgramData\chocolatey\bin\flex.exe -Force
-        Copy-Item C:\ProgramData\chocolatey\bin\win_bison.exe `
-                  C:\ProgramData\chocolatey\bin\bison.exe -Force
 
     - name: Install Qt
       uses: jurplel/install-qt-action@v4
@@ -56,7 +46,7 @@ jobs:
         modules: qtwebengine
         dir: C:\Qt
 
-    - name: Setup MSYS2 tools
+    - name: Setup MSYS2
       uses: msys2/setup-msys2@v2
       with:
         msystem: MINGW64
@@ -77,7 +67,9 @@ jobs:
           -A x64 \
           -DCMAKE_PREFIX_PATH=$QT_HOME \
           -DRV_DEPS_QT_LOCATION=$QT_HOME \
-          -DRV_DEPS_WIN_PERL_ROOT=/c/Strawberry/perl/bin
+          -DRV_DEPS_WIN_PERL_ROOT=/c/Strawberry/perl/bin \
+          -DFLEX_EXECUTABLE=/c/ProgramData/chocolatey/bin/win_flex.exe \
+          -DBISON_EXECUTABLE=/c/ProgramData/chocolatey/bin/win_bison.exe
 
     - name: Build
       shell: bash
@@ -87,7 +79,7 @@ jobs:
       shell: bash
       run: cmake --install build --prefix install
 
-    - name: Upload artifact
+    - name: Upload OpenRV artifact
       uses: actions/upload-artifact@v4
       with:
         name: OpenRV-Windows
