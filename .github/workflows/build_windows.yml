@@ -35,11 +35,18 @@ jobs:
       shell: powershell
       run: |
         choco install strawberryperl nasm winflexbison pkgconfiglite cmake -y
+
         python -m pip install --upgrade pip
         pip install pyyaml requests wheel numpy
 
-        # Ensure flex/bison available
+        # add choco bin to PATH
         echo "C:\ProgramData\chocolatey\bin" >> $env:GITHUB_PATH
+
+    - name: Fix flex command for CMake
+      shell: powershell
+      run: |
+        copy C:\ProgramData\chocolatey\bin\win_flex.exe C:\ProgramData\chocolatey\bin\flex.exe
+        copy C:\ProgramData\chocolatey\bin\win_bison.exe C:\ProgramData\chocolatey\bin\bison.exe
 
     - name: Install Qt 5.15 + WebEngine
       uses: jurplel/install-qt-action@v4
@@ -68,10 +75,6 @@ jobs:
 
         export PATH="$PATH:/c/Program Files/CMake/bin:/c/msys64/mingw64/bin:/c/ProgramData/chocolatey/bin"
         export QT_HOME="/c/Qt/5.15.2/msvc2019_64"
-
-        # ensure flex/bison found
-        export LEX=/c/ProgramData/chocolatey/bin/win_flex.exe
-        export YACC=/c/ProgramData/chocolatey/bin/win_bison.exe
 
         cd "$(cygpath -u "$GITHUB_WORKSPACE")"
 
