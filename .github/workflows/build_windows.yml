@@ -141,4 +141,3 @@ jobs:
         with:
           name: OpenRV-Windows-${{ github.event.inputs.build_type }}
           path: ${{ env.BUILD_DIR }}\_install
-```
