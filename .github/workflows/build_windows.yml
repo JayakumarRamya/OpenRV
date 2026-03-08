@@ -1,4 +1,3 @@
-
 name: Build OpenRV Windows (VFX-CY2024)
 
 on:
@@ -23,9 +22,11 @@ jobs:
       QT_VERSION: "6.5.3"
 
     steps:
-
       - name: Enable Windows long paths
-        run: git config --system core.longpaths true
+        shell: powershell
+        run: |
+          git config --system core.longpaths true
+          Set-ItemProperty -Path 'HKLM:\System\CurrentControlSet\Control\FileSystem' -Name 'LongPathsEnabled' -value 1
 
       - name: Checkout OpenRV
         uses: actions/checkout@v4
@@ -36,19 +37,27 @@ jobs:
       - name: Move repository to short path
         shell: powershell
         run: |
-          mkdir $env:BUILD_DIR
+          if (Test-Path $env:BUILD_DIR) { Remove-Item -Recurse -Force $env:BUILD_DIR }
+          New-Item -ItemType Directory -Path $env:BUILD_DIR
           Move-Item -Path "temp_src\*" -Destination $env:BUILD_DIR
           Remove-Item -Recurse -Force temp_src
 
       - name: Free disk space
         shell: powershell
         run: |
-          Remove-Item -Recurse -Force "C:\Program Files\Android" -ErrorAction SilentlyContinue
-          Remove-Item -Recurse -Force "C:\hostedtoolcache\windows\CodeQL" -ErrorAction SilentlyContinue
-          Remove-Item -Recurse -Force "C:\hostedtoolcache\windows\Java" -ErrorAction SilentlyContinue
+          $paths = @(
+            "C:\Program Files\Android",
+            "C:\hostedtoolcache\windows\CodeQL",
+            "C:\hostedtoolcache\windows\Java"
+          )
+          foreach ($path in $paths) {
+            if (Test-Path $path) { Remove-Item -Recurse -Force $path -ErrorAction SilentlyContinue }
+          }
 
       - name: Setup MSVC
         uses: ilammy/msvc-dev-cmd@v1
+        with:
+          arch: x64
 
       - name: Setup Python
         uses: actions/setup-python@v5
@@ -60,9 +69,8 @@ jobs:
         run: |
           $py = (Get-Command python).Source
           $dir = Split-Path $py
-          if (!(Test-Path "$dir\python3.exe")) {
-            Copy-Item $py "$dir\python3.exe"
-          }
+          if (!(Test-Path "$dir\python3.exe")) { Copy-Item $py "$dir\python3.exe" }
+          echo "PYTHON_HOME=$dir" >> $env:GITHUB_ENV
 
       - name: Install system tools
         shell: powershell
@@ -97,17 +105,21 @@ jobs:
           path: |
             C:\rv\_build\RV_DEPS
             C:\rv\_build\download
-          key: ${{ runner.os }}-openrv-${{ env.QT_VERSION }}
+          key: ${{ runner.os }}-openrv-${{ env.QT_VERSION }}-${{ hashFiles('**/CMakeLists.txt') }}
+          restore-keys: |
+            ${{ runner.os }}-openrv-${{ env.QT_VERSION }}-
 
       - name: Bootstrap and Build
-        shell: bash
+        shell: msys2 {0}
         working-directory: C:\rv
         run: |
-          export PATH="$PATH:/c/Program Files/CMake/bin:/c/msys64/mingw64/bin"
-          export QT_HOME="/c/Qt/6.5.3/msvc2019_64"
+          # Define critical VFX Platform variables
           export RV_VFX_PLATFORM=CY2024
-
-          cd /c/rv
+          export QT_HOME="C:/Qt/6.5.3/msvc2019_64"
+          export PYTHON_HOME=$(cygpath -u "$PYTHON_HOME")
+          
+          # Force CMake and MSVC into the path for MSYS2
+          export PATH="/c/Program Files/CMake/bin:/c/Program Files/Microsoft Visual Studio/2022/Enterprise/VC/Tools/MSVC/$(ls /c/Program\ Files/Microsoft\ Visual\ Studio/2022/Enterprise/VC/Tools/MSVC/ | head -n 1)/bin/Hostx64/x64:$PATH"
 
           source rvcmds.sh
 
@@ -117,14 +129,16 @@ jobs:
             rvrelease
           fi
 
+          # Bootstrap downloads and builds internal dependencies
           rvbootstrap
+          
+          # RVMK starts the actual OpenRV compilation
           rvmk
 
       - name: Create installation package
-        shell: bash
+        shell: msys2 {0}
         working-directory: C:\rv
         run: |
-          cd /c/rv
           source rvcmds.sh
           rvinst
 
