@@ -39,6 +39,19 @@ jobs:
           Move-Item -Path "temp_src\*" -Destination ${{ env.BUILD_DIR }}
           Remove-Item -Path "temp_src" -Recurse -Force
 
+      - name: Free Disk Space
+        shell: powershell
+        run: |
+          Write-Host "Disk space before cleanup:"
+          Get-PSDrive C
+
+          Remove-Item -Recurse -Force "C:\Program Files\Android" -ErrorAction SilentlyContinue
+          Remove-Item -Recurse -Force "C:\hostedtoolcache\windows\CodeQL" -ErrorAction SilentlyContinue
+          Remove-Item -Recurse -Force "C:\hostedtoolcache\windows\Java" -ErrorAction SilentlyContinue
+
+          Write-Host "Disk space after cleanup:"
+          Get-PSDrive C
+
       - name: Install MSVC v143 (14.40)
         shell: powershell
         run: |
@@ -111,6 +124,16 @@ jobs:
             mingw-w64-x86_64-libarchive
             mingw-w64-x86_64-glew
 
+      - name: Cache OpenRV Dependencies
+        uses: actions/cache@v4
+        with:
+          path: |
+            ${{ env.BUILD_DIR }}/_build/RV_DEPS
+            ${{ env.BUILD_DIR }}/_build/download
+          key: ${{ runner.os }}-openrv-${{ env.PYTHON_VERSION }}-${{ env.QT_VERSION }}-${{ hashFiles('**/cmake/defaults/*.cmake') }}
+          restore-keys: |
+            ${{ runner.os }}-openrv-${{ env.PYTHON_VERSION }}-
+
       - name: Bootstrap and Build
         shell: bash
         working-directory: ${{ env.BUILD_DIR }}
@@ -120,7 +143,6 @@ jobs:
           export ACLOCAL_PATH="/c/msys64/usr/share/aclocal"
           export QT_HOME="/c/Qt/${{ env.QT_VERSION }}/msvc2019_64"
 
-          # Skip interactive VFX platform prompt
           export RV_VFX_PLATFORM=CY2024
 
           source rvcmds.sh
