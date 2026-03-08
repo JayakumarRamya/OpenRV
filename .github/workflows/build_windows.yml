@@ -30,12 +30,13 @@ jobs:
       with:
         python-version: "3.11"
 
-    - name: Install build dependencies
+    - name: Install dependencies
       shell: powershell
       run: |
         choco install strawberryperl nasm winflexbison pkgconfiglite cmake -y
         python -m pip install --upgrade pip
         pip install pyyaml requests wheel numpy
+
         echo "C:\ProgramData\chocolatey\bin" >> $env:GITHUB_PATH
 
     - name: Install Qt
@@ -46,7 +47,7 @@ jobs:
         modules: qtwebengine
         dir: C:\Qt
 
-    - name: Setup MSYS2
+    - name: Setup MSYS2 tools
       uses: msys2/setup-msys2@v2
       with:
         msystem: MINGW64
@@ -71,15 +72,15 @@ jobs:
           -DFLEX_EXECUTABLE=/c/ProgramData/chocolatey/bin/win_flex.exe \
           -DBISON_EXECUTABLE=/c/ProgramData/chocolatey/bin/win_bison.exe
 
-    - name: Build
+    - name: Build OpenRV
       shell: bash
       run: cmake --build build --config Release --parallel 4
 
-    - name: Install
+    - name: Install OpenRV
       shell: bash
       run: cmake --install build --prefix install
 
-    - name: Upload OpenRV artifact
+    - name: Upload artifact
       uses: actions/upload-artifact@v4
       with:
         name: OpenRV-Windows
