@@ -35,14 +35,13 @@ jobs:
       shell: powershell
       run: |
         choco install strawberryperl nasm winflexbison pkgconfiglite cmake -y
-
         python -m pip install --upgrade pip
         pip install pyyaml requests wheel numpy
 
-        # ensure Chocolatey tools are available
+        # Ensure Chocolatey tools are in PATH
         echo "C:\ProgramData\chocolatey\bin" >> $env:GITHUB_PATH
 
-    - name: Fix flex and bison names
+    - name: Create flex and bison wrappers
       shell: powershell
       run: |
         Copy-Item "C:\ProgramData\chocolatey\bin\win_flex.exe" `
