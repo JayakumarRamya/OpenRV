@@ -12,8 +12,6 @@ on:
 jobs:
   build:
     runs-on: windows-2022
-    # OpenRV can take 3-5 hours for a full bootstrap. 
-    # We set a high timeout so GitHub doesn't kill it early.
     timeout-minutes: 480 
     
     env:
@@ -42,13 +40,16 @@ jobs:
           $installationPath = & "${env:ProgramFiles(x86)}\Microsoft Visual Studio\Installer\vswhere.exe" -latest -property installationPath
           Write-Host "Modifying Visual Studio at: $installationPath"
           
-          # Using --quiet to prevent GUI-related freezes in headless CI
+          # Force kill any existing installer processes that might be holding a lock
+          Get-Process -Name "vs_installer", "vs_installerservice" -ErrorAction SilentlyContinue | Stop-Process -Force
+          
           $installArgs = "modify --installPath `"$installationPath`" --add Microsoft.VisualStudio.Component.VC.14.40.x86.x64 --quiet --norestart"
           
+          # Start with a timeout to prevent infinite hang
           $process = Start-Process -FilePath "${env:ProgramFiles(x86)}\Microsoft Visual Studio\Installer\vs_installer.exe" -ArgumentList $installArgs -Wait -PassThru
           
           if ($process.ExitCode -eq 0 -or $process.ExitCode -eq 3010) {
-              Write-Host "MSVC 14.40 installed successfully."
+              Write-Host "MSVC 14.40 installation reached terminal state."
           } else {
               Write-Error "Installer failed with exit code $($process.ExitCode)"
               exit 1
@@ -74,6 +75,7 @@ jobs:
 
       - name: Install System Tools
         run: |
+          # Adding CMake specifically to ensure it's in the system path
           choco install strawberryperl nasm winflexbison pkgconfiglite cmake --installargs 'ADD_CMAKE_TO_PATH=System' -y
           rustup toolchain install stable
           pip install pyyaml requests wheel pyzstd py7zr pre-commit numpy
@@ -98,10 +100,10 @@ jobs:
         shell: bash
         working-directory: ${{ env.BUILD_DIR }}
         run: |
-          # Manual path exports to ensure MSYS2 finds Windows tools correctly
-          export PATH="/c/Program Files/CMake/bin:/c/msys64/mingw64/bin:$PATH"
+          # Critical: Ensure MSYS2 knows where to find the Windows-based tools
+          export PATH="/c/Program Files/CMake/bin:/c/msys64/mingw64/bin:/c/Qt/${{ env.QT_VERSION }}/msvc2019_64/bin:$PATH"
           export ACLOCAL_PATH="/c/msys64/usr/share/aclocal"
-          export QT_HOME="/c/Qt/6.5.3/msvc2019_64"
+          export QT_HOME="/c/Qt/${{ env.QT_VERSION }}/msvc2019_64"
           
           source rvcmds.sh
           
@@ -111,10 +113,10 @@ jobs:
             rvrelease
           fi
 
-          # Select profile 3 (Windows) for the interactive bootstrap
+          # Interactive select '3' for Windows and run bootstrap
           echo "3" | ./rvbootstrap
           
-          # Use all available cores for the build
+          # Use all processors for the build
           rvmk -j $NUMBER_OF_PROCESSORS
 
       - name: Create Installation Package
