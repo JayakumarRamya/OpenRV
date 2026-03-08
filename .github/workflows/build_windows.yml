@@ -19,35 +19,22 @@ jobs:
       with:
         python-version: "3.11"
 
-    - name: Upgrade pip
-      run: python -m pip install --upgrade pip
-
-    - name: Install Python requirements
+    - name: Install Python dependencies
       run: |
-        pip install pyyaml
-        pip install requests
-        pip install wheel
-        pip install pyzstd
-        pip install py7zr
-        pip install pre-commit
-        pip install numpy
+        python -m pip install --upgrade pip
+        pip install pyyaml requests wheel pyzstd py7zr pre-commit numpy
 
-    - name: Install Strawberry Perl
-      run: choco install strawberryperl -y
-
-    - name: Install NASM
-      run: choco install nasm -y
-
-    - name: Install Flex Bison
-      run: choco install winflexbison -y
-
-    - name: Install pkg-config
-      run: choco install pkgconfiglite -y
+    - name: Install Chocolatey tools
+      run: |
+        choco install strawberryperl -y
+        choco install nasm -y
+        choco install winflexbison -y
+        choco install pkgconfiglite -y
 
     - name: Install Rust
       uses: dtolnay/rust-toolchain@stable
 
-    - name: Setup MSYS2
+    - name: Install MSYS2 packages
       uses: msys2/setup-msys2@v2
       with:
         msystem: MINGW64
@@ -72,17 +59,19 @@ jobs:
     - name: Bootstrap OpenRV
       shell: bash
       run: |
+        export RV_VFX_PLATFORM=CY2025
         source rvcmds.sh
-        printf "3\n" | rvbootstrap
+        rvbootstrap
 
     - name: Build OpenRV
       shell: bash
       run: |
+        export RV_VFX_PLATFORM=CY2025
         source rvcmds.sh
         rvmk
 
-    - name: Upload OpenRV Build
+    - name: Upload OpenRV build
       uses: actions/upload-artifact@v4
       with:
-        name: openrv-windows-build
+        name: openrv-windows
         path: _build/stage/app
