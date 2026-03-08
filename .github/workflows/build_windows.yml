@@ -11,10 +11,11 @@ jobs:
 
     env:
       QT_VERSION: 5.15.2
+      PYTHON_VERSION: "3.11"
 
     steps:
 
-    - name: Enable long paths
+    - name: Enable Windows long paths
       run: git config --system core.longpaths true
 
     - name: Checkout OpenRV
@@ -28,26 +29,36 @@ jobs:
     - name: Setup Python
       uses: actions/setup-python@v5
       with:
-        python-version: "3.11"
+        python-version: ${{ env.PYTHON_VERSION }}
 
-    - name: Install dependencies
+    - name: Install build tools
       shell: powershell
       run: |
         choco install strawberryperl nasm winflexbison pkgconfiglite cmake -y
+
         python -m pip install --upgrade pip
         pip install pyyaml requests wheel numpy
 
+        # ensure Chocolatey bin is available
         echo "C:\ProgramData\chocolatey\bin" >> $env:GITHUB_PATH
+
+    - name: Create flex and bison commands
+      shell: powershell
+      run: |
+        Copy-Item "C:\ProgramData\chocolatey\bin\win_flex.exe" `
+                  "C:\ProgramData\chocolatey\bin\flex.exe" -Force
+        Copy-Item "C:\ProgramData\chocolatey\bin\win_bison.exe" `
+                  "C:\ProgramData\chocolatey\bin\bison.exe" -Force
 
     - name: Install Qt
       uses: jurplel/install-qt-action@v4
       with:
-        version: 5.15.2
+        version: ${{ env.QT_VERSION }}
         arch: win64_msvc2019_64
         modules: qtwebengine
         dir: C:\Qt
 
-    - name: Setup MSYS2 tools
+    - name: Setup MSYS2
       uses: msys2/setup-msys2@v2
       with:
         msystem: MINGW64
@@ -55,12 +66,15 @@ jobs:
         install: >
           autoconf automake bison flex git libtool nasm p7zip patch unzip zip
           mingw-w64-x86_64-toolchain
+          mingw-w64-x86_64-meson
+          mingw-w64-x86_64-libarchive
+          mingw-w64-x86_64-glew
 
     - name: Configure OpenRV
       shell: bash
       run: |
 
-        export PATH="$PATH:/c/Program Files/CMake/bin:/c/ProgramData/chocolatey/bin:/c/msys64/mingw64/bin"
+        export PATH="/c/ProgramData/chocolatey/bin:/c/Program Files/CMake/bin:/c/msys64/mingw64/bin:$PATH"
         export QT_HOME="/c/Qt/5.15.2/msvc2019_64"
 
         cmake -B build \
@@ -68,19 +82,19 @@ jobs:
           -A x64 \
           -DCMAKE_PREFIX_PATH=$QT_HOME \
           -DRV_DEPS_QT_LOCATION=$QT_HOME \
-          -DRV_DEPS_WIN_PERL_ROOT=/c/Strawberry/perl/bin \
-          -DFLEX_EXECUTABLE=/c/ProgramData/chocolatey/bin/win_flex.exe \
-          -DBISON_EXECUTABLE=/c/ProgramData/chocolatey/bin/win_bison.exe
+          -DRV_DEPS_WIN_PERL_ROOT=/c/Strawberry/perl/bin
 
     - name: Build OpenRV
       shell: bash
-      run: cmake --build build --config Release --parallel 4
+      run: |
+        cmake --build build --config Release --parallel 4
 
     - name: Install OpenRV
       shell: bash
-      run: cmake --install build --prefix install
+      run: |
+        cmake --install build --prefix install
 
-    - name: Upload artifact
+    - name: Upload OpenRV artifact
       uses: actions/upload-artifact@v4
       with:
         name: OpenRV-Windows
