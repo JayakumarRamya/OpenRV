@@ -38,11 +38,12 @@ jobs:
         python -m pip install --upgrade pip
         pip install pyyaml requests wheel numpy
 
-    - name: Install Qt 5.15
+    - name: Install Qt 5.15 + WebEngine
       uses: jurplel/install-qt-action@v4
       with:
         version: ${{ env.QT_VERSION }}
         arch: win64_msvc2019_64
+        modules: qtwebengine
         dir: C:\Qt
 
     - name: Setup MSYS2 tools
@@ -70,6 +71,7 @@ jobs:
         cmake -B build \
           -G "Visual Studio 17 2022" \
           -A x64 \
+          -DCMAKE_PREFIX_PATH=$QT_HOME \
           -DRV_DEPS_QT_LOCATION=$QT_HOME \
           -DRV_DEPS_WIN_PERL_ROOT=/c/Strawberry/perl/bin
 
