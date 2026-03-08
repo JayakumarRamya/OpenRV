@@ -7,7 +7,9 @@ on:
         description: Build configuration
         default: Release
         type: choice
-        options: [Release, Debug]
+        options:
+          - Release
+          - Debug
 
 jobs:
   build:
@@ -21,7 +23,7 @@ jobs:
 
     steps:
 
-      - name: Enable long paths
+      - name: Enable Windows long paths
         run: git config --system core.longpaths true
 
       - name: Checkout OpenRV
@@ -30,17 +32,17 @@ jobs:
           submodules: recursive
           path: temp_src
 
-      - name: Move source to root path
+      - name: Move repository to short path
         shell: powershell
         run: |
-          mkdir ${{ env.BUILD_DIR }}
-          Move-Item -Path "temp_src\*" -Destination ${{ env.BUILD_DIR }}
-          Remove-Item -Path "temp_src" -Recurse -Force
+          mkdir $env:BUILD_DIR
+          Move-Item -Path "temp_src\*" -Destination $env:BUILD_DIR
+          Remove-Item -Recurse -Force temp_src
 
-      - name: Free Disk Space
+      - name: Free disk space
         shell: powershell
         run: |
-          Write-Host "Cleaning runner disk space..."
+          Write-Host "Cleaning runner disk..."
           Remove-Item -Recurse -Force "C:\Program Files\Android" -ErrorAction SilentlyContinue
           Remove-Item -Recurse -Force "C:\hostedtoolcache\windows\CodeQL" -ErrorAction SilentlyContinue
           Remove-Item -Recurse -Force "C:\hostedtoolcache\windows\Java" -ErrorAction SilentlyContinue
@@ -65,16 +67,16 @@ jobs:
       - name: Install system tools
         shell: powershell
         run: |
-          choco install strawberryperl nasm winflexbison pkgconfiglite cmake -y
+          choco install strawberryperl nasm winflexbison pkgconfiglite cmake ccache -y
           rustup toolchain install stable
-          python -m pip install --upgrade pip
+          python -m pip install --upgrade pip setuptools wheel
           pip install pyyaml requests wheel pyzstd py7zr pre-commit numpy
 
       - name: Install Qt
         uses: jurplel/install-qt-action@v4
         with:
           version: ${{ env.QT_VERSION }}
-          arch: win64_msvc2019_64
+          arch: win64_msvc2022_64
           dir: C:\Qt
 
       - name: Setup MSYS2
@@ -84,29 +86,32 @@ jobs:
           update: true
           install: >
             autoconf automake bison flex git libtool nasm p7zip patch unzip zip
-            mingw-w64-x86_64-toolchain mingw-w64-x86_64-meson
-            mingw-w64-x86_64-libarchive mingw-w64-x86_64-glew
+            mingw-w64-x86_64-toolchain
+            mingw-w64-x86_64-meson
+            mingw-w64-x86_64-libarchive
+            mingw-w64-x86_64-glew
 
-      - name: Cache OpenRV Dependencies
+      - name: Cache OpenRV dependencies
         uses: actions/cache@v4
         with:
           path: |
-            ${{ env.BUILD_DIR }}/_build/RV_DEPS
-            ${{ env.BUILD_DIR }}/_build/download
+            ${{ env.BUILD_DIR }}\_build\RV_DEPS
+            ${{ env.BUILD_DIR }}\_build\download
           key: ${{ runner.os }}-openrv-${{ env.PYTHON_VERSION }}-${{ env.QT_VERSION }}-${{ hashFiles('cmake/defaults/*.cmake') }}
           restore-keys: |
             ${{ runner.os }}-openrv-${{ env.PYTHON_VERSION }}-
 
       - name: Bootstrap and Build
         shell: bash
-        working-directory: ${{ env.BUILD_DIR }}
+        working-directory: /c/rv
         run: |
-          export PATH="/c/Program Files/CMake/bin:/c/msys64/mingw64/bin:$PATH"
+          export PATH="$PATH:/c/Program Files/CMake/bin:/c/msys64/mingw64/bin"
           export ACLOCAL_PATH="/c/msys64/usr/share/aclocal"
-          export QT_HOME="/c/Qt/${{ env.QT_VERSION }}/msvc2019_64"
+          export QT_HOME="/c/Qt/${{ env.QT_VERSION }}/msvc2022_64"
           export RV_VFX_PLATFORM=CY2024
+          export MAKEFLAGS="-j$(nproc)"
 
-          source rvcmds.sh
+          source ./rvcmds.sh
 
           if [ "${{ github.event.inputs.build_type }}" == "Debug" ]; then
             rvdebug
@@ -115,17 +120,17 @@ jobs:
           fi
 
           rvbootstrap
-          rvmk -j $NUMBER_OF_PROCESSORS
+          rvmk
 
       - name: Create installation package
         shell: bash
-        working-directory: ${{ env.BUILD_DIR }}
+        working-directory: /c/rv
         run: |
-          source rvcmds.sh
+          source ./rvcmds.sh
           rvinst
 
       - name: Upload artifact
         uses: actions/upload-artifact@v4
         with:
           name: OpenRV-Windows-${{ github.event.inputs.build_type }}
-          path: ${{ env.BUILD_DIR }}/_install
+          path: C:\rv\_install
