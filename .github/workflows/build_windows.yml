@@ -67,7 +67,7 @@ jobs:
       - name: Install system tools
         shell: powershell
         run: |
-          choco install strawberryperl nasm winflexbison pkgconfiglite cmake ccache -y
+          choco install strawberryperl nasm winflexbison pkgconfiglite cmake -y
           rustup toolchain install stable
           python -m pip install --upgrade pip setuptools wheel
           pip install pyyaml requests wheel pyzstd py7zr pre-commit numpy
@@ -101,36 +101,32 @@ jobs:
 
       - name: Bootstrap and Build
         shell: bash
-        working-directory: ${{ env.BUILD_DIR }}
+        working-directory: C:\rv
         run: |
-
           export PATH="$PATH:/c/Program Files/CMake/bin:/c/msys64/mingw64/bin"
-          export ACLOCAL_PATH="/c/msys64/usr/share/aclocal"
-          export QT_HOME="/c/Qt/${QT_VERSION}/msvc2019_64"
+          export QT_HOME="/c/Qt/6.5.3/msvc2019_64"
           export RV_VFX_PLATFORM=CY2024
-
-          bash <<'EOF'
-          set -e
 
           cd /c/rv
 
-          source ./rvcmds.sh
+          source rvcmds.sh
 
-          rvrelease
+          if [ "${{ github.event.inputs.build_type }}" = "Debug" ]; then
+            rvdebug
+          else
+            rvrelease
+          fi
+
           rvbootstrap
           rvmk
-          EOF
 
       - name: Create installation package
         shell: bash
-        working-directory: ${{ env.BUILD_DIR }}
+        working-directory: C:\rv
         run: |
-
-          bash <<'EOF'
           cd /c/rv
-          source ./rvcmds.sh
+          source rvcmds.sh
           rvinst
-          EOF
 
       - name: Upload artifact
         uses: actions/upload-artifact@v4
