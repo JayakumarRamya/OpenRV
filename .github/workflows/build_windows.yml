@@ -4,88 +4,90 @@ on:
   workflow_dispatch:
     inputs:
       build_type:
-        description: 'Build Configuration'
-        default: 'Release'
+        description: Build configuration
+        default: Release
         type: choice
-        options: [Release, Debug]
+        options:
+          - Release
+          - Debug
 
 jobs:
   build:
     runs-on: windows-2022
-    timeout-minutes: 480 
-    
+    timeout-minutes: 480
+
     env:
-      BUILD_DIR: 'C:\rv'
-      PYTHON_VERSION: '3.11'
-      QT_VERSION: '6.5.3'
+      BUILD_DIR: C:\rv
+      PYTHON_VERSION: "3.11"
+      QT_VERSION: "6.5.3"
 
     steps:
-      - name: Enable Long Paths
+
+      - name: Enable long paths
         run: git config --system core.longpaths true
 
       - name: Checkout OpenRV
         uses: actions/checkout@v4
         with:
           submodules: recursive
-          path: 'temp_src'
+          path: temp_src
 
-      - name: Move Source to Root
+      - name: Move source to root path
+        shell: powershell
         run: |
           mkdir ${{ env.BUILD_DIR }}
           Move-Item -Path "temp_src\*" -Destination ${{ env.BUILD_DIR }}
-        shell: powershell
+          Remove-Item -Path "temp_src" -Recurse -Force
 
       - name: Install MSVC v143 (14.40)
-        run: |
-          $installationPath = & "${env:ProgramFiles(x86)}\Microsoft Visual Studio\Installer\vswhere.exe" -latest -property installationPath
-          Write-Host "Modifying Visual Studio at: $installationPath"
-          
-          # Force kill any existing installer processes that might be holding a lock
-          Get-Process -Name "vs_installer", "vs_installerservice" -ErrorAction SilentlyContinue | Stop-Process -Force
-          
-          $installArgs = "modify --installPath `"$installationPath`" --add Microsoft.VisualStudio.Component.VC.14.40.x86.x64 --quiet --norestart"
-          
-          # Start with a timeout to prevent infinite hang
-          $process = Start-Process -FilePath "${env:ProgramFiles(x86)}\Microsoft Visual Studio\Installer\vs_installer.exe" -ArgumentList $installArgs -Wait -PassThru
-          
-          if ($process.ExitCode -eq 0 -or $process.ExitCode -eq 3010) {
-              Write-Host "MSVC 14.40 installation reached terminal state."
-          } else {
-              Write-Error "Installer failed with exit code $($process.ExitCode)"
-              exit 1
-          }
         shell: powershell
+        run: |
+          $vsPath = & "${env:ProgramFiles(x86)}\Microsoft Visual Studio\Installer\vswhere.exe" -latest -property installationPath
+          Write-Host "Visual Studio path: $vsPath"
 
-      - name: Setup MSVC Environment
+          $process = Start-Process `
+            -FilePath "${env:ProgramFiles(x86)}\Microsoft Visual Studio\Installer\vs_installer.exe" `
+            -ArgumentList "modify --installPath `"$vsPath`" --add Microsoft.VisualStudio.Component.VC.14.40.x86.x64 --quiet --norestart" `
+            -Wait -PassThru
+
+          if ($process.ExitCode -ne 0 -and $process.ExitCode -ne 3010) {
+            Write-Error "Installer failed with exit code $($process.ExitCode)"
+            exit 1
+          }
+
+      - name: Setup MSVC environment
         uses: ilammy/msvc-dev-cmd@v1
         with:
-          toolset: '14.40' 
+          toolset: "14.40"
 
-      - name: Setup Python ${{ env.PYTHON_VERSION }}
+      - name: Setup Python
         uses: actions/setup-python@v5
         with:
           python-version: ${{ env.PYTHON_VERSION }}
 
-      - name: Create Python3 Alias
-        run: |
-          $pyPath = (Get-Command python).Source
-          $pyDir = Split-Path $pyPath
-          Copy-Item "$pyPath" "$pyDir\python3.exe"
+      - name: Create python3 alias
         shell: powershell
-
-      - name: Install System Tools
         run: |
-          # Adding CMake specifically to ensure it's in the system path
-          choco install strawberryperl nasm winflexbison pkgconfiglite cmake --installargs 'ADD_CMAKE_TO_PATH=System' -y
+          $py = (Get-Command python).Source
+          $dir = Split-Path $py
+          if (!(Test-Path "$dir\python3.exe")) {
+            Copy-Item $py "$dir\python3.exe"
+          }
+
+      - name: Install system tools
+        shell: powershell
+        run: |
+          choco install strawberryperl nasm winflexbison pkgconfiglite cmake -y
           rustup toolchain install stable
+          python -m pip install --upgrade pip
           pip install pyyaml requests wheel pyzstd py7zr pre-commit numpy
 
-      - name: Install Qt ${{ env.QT_VERSION }}
-        uses: jurplel/install-qt-action@v3
+      - name: Install Qt
+        uses: jurplel/install-qt-action@v4
         with:
           version: ${{ env.QT_VERSION }}
-          arch: 'win64_msvc2019_64'
-          dir: 'C:\'
+          arch: win64_msvc2019_64
+          dir: C:\Qt
 
       - name: Setup MSYS2
         uses: msys2/setup-msys2@v2
@@ -93,40 +95,54 @@ jobs:
           msystem: MINGW64
           update: true
           install: >
-            autoconf automake bison flex git libtool nasm p7zip patch unzip zip
-            mingw-w64-x86_64-toolchain mingw-w64-x86_64-meson mingw-w64-x86_64-libarchive
+            autoconf
+            automake
+            bison
+            flex
+            git
+            libtool
+            nasm
+            p7zip
+            patch
+            unzip
+            zip
+            mingw-w64-x86_64-toolchain
+            mingw-w64-x86_64-meson
+            mingw-w64-x86_64-libarchive
+            mingw-w64-x86_64-glew
 
       - name: Bootstrap and Build
         shell: bash
         working-directory: ${{ env.BUILD_DIR }}
         run: |
-          # Critical: Ensure MSYS2 knows where to find the Windows-based tools
-          export PATH="/c/Program Files/CMake/bin:/c/msys64/mingw64/bin:/c/Qt/${{ env.QT_VERSION }}/msvc2019_64/bin:$PATH"
+
+          export PATH="/c/Program Files/CMake/bin:/c/msys64/mingw64/bin:$PATH"
           export ACLOCAL_PATH="/c/msys64/usr/share/aclocal"
           export QT_HOME="/c/Qt/${{ env.QT_VERSION }}/msvc2019_64"
-          
+
+          # Skip interactive VFX platform prompt
+          export RV_VFX_PLATFORM=CY2024
+
           source rvcmds.sh
-          
+
           if [ "${{ github.event.inputs.build_type }}" == "Debug" ]; then
             rvdebug
           else
             rvrelease
           fi
 
-          # Interactive select '3' for Windows and run bootstrap
-          echo "3" | ./rvbootstrap
-          
-          # Use all processors for the build
+          rvbootstrap
+
           rvmk -j $NUMBER_OF_PROCESSORS
 
-      - name: Create Installation Package
+      - name: Create installation package
         shell: bash
         working-directory: ${{ env.BUILD_DIR }}
         run: |
           source rvcmds.sh
           rvinst
 
-      - name: Upload Artifact
+      - name: Upload artifact
         uses: actions/upload-artifact@v4
         with:
           name: OpenRV-Windows-${{ github.event.inputs.build_type }}
