@@ -14,12 +14,14 @@ on:
 jobs:
   build:
     runs-on: windows-2022
-    timeout-minutes: 480
+    timeout-minutes: 480 # 8 hours (Note: GitHub Free/Pro limits to 6 hours)
 
     env:
       BUILD_DIR: C:\rv
       PYTHON_VERSION: "3.11"
       QT_VERSION: "6.5.3"
+      # This helps MSVC tools find their own libraries
+      VSCMD_SKIP_SENDTELEMETRY: 1 
 
     steps:
       - name: Enable Windows long paths
@@ -45,13 +47,12 @@ jobs:
       - name: Free disk space
         shell: powershell
         run: |
-          $paths = @(
-            "C:\Program Files\Android",
-            "C:\hostedtoolcache\windows\CodeQL",
-            "C:\hostedtoolcache\windows\Java"
-          )
-          foreach ($path in $paths) {
-            if (Test-Path $path) { Remove-Item -Recurse -Force $path -ErrorAction SilentlyContinue }
+          $deletions = @("C:\Program Files\Android", "C:\hostedtoolcache\windows\CodeQL", "C:\hostedtoolcache\windows\Java", "C:\Program Files\dotnet")
+          foreach ($dir in $deletions) {
+            if (Test-Path $dir) { 
+              Write-Host "Deleting $dir..."
+              Remove-Item -Recurse -Force $dir -ErrorAction SilentlyContinue 
+            }
           }
 
       - name: Setup MSVC
@@ -64,13 +65,14 @@ jobs:
         with:
           python-version: ${{ env.PYTHON_VERSION }}
 
-      - name: Create python3 alias
+      - name: Create python3 alias & Set Env
         shell: powershell
         run: |
           $py = (Get-Command python).Source
           $dir = Split-Path $py
           if (!(Test-Path "$dir\python3.exe")) { Copy-Item $py "$dir\python3.exe" }
-          echo "PYTHON_HOME=$dir" >> $env:GITHUB_ENV
+          # Store the path for the MSYS2 step
+          echo "PYTHON_BIN_PATH=$dir" >> $env:GITHUB_ENV
 
       - name: Install system tools
         shell: powershell
@@ -92,6 +94,8 @@ jobs:
         with:
           msystem: MINGW64
           update: true
+          # path-type: inherit is crucial to see MSVC/Python from the Windows side
+          path-type: inherit
           install: >
             autoconf automake bison flex git libtool nasm p7zip patch unzip zip
             mingw-w64-x86_64-toolchain
@@ -105,7 +109,7 @@ jobs:
           path: |
             C:\rv\_build\RV_DEPS
             C:\rv\_build\download
-          key: ${{ runner.os }}-openrv-${{ env.QT_VERSION }}-${{ hashFiles('**/CMakeLists.txt') }}
+          key: ${{ runner.os }}-openrv-${{ env.QT_VERSION }}-${{ github.run_id }}
           restore-keys: |
             ${{ runner.os }}-openrv-${{ env.QT_VERSION }}-
 
@@ -113,26 +117,29 @@ jobs:
         shell: msys2 {0}
         working-directory: C:\rv
         run: |
-          # Define critical VFX Platform variables
+          # 1. Platform Setup
           export RV_VFX_PLATFORM=CY2024
           export QT_HOME="C:/Qt/6.5.3/msvc2019_64"
-          export PYTHON_HOME=$(cygpath -u "$PYTHON_HOME")
           
-          # Force CMake and MSVC into the path for MSYS2
-          export PATH="/c/Program Files/CMake/bin:/c/Program Files/Microsoft Visual Studio/2022/Enterprise/VC/Tools/MSVC/$(ls /c/Program\ Files/Microsoft\ Visual\ Studio/2022/Enterprise/VC/Tools/MSVC/ | head -n 1)/bin/Hostx64/x64:$PATH"
-
+          # 2. Convert Windows paths to Unix paths for MSYS2 Bash
+          export PYTHON_HOME=$(cygpath -u "$PYTHON_BIN_PATH")
+          export PATH="$PYTHON_HOME:$PATH"
+          
+          # 3. Load OpenRV environment
           source rvcmds.sh
 
+          # 4. Set Build Mode
           if [ "${{ github.event.inputs.build_type }}" = "Debug" ]; then
             rvdebug
           else
             rvrelease
           fi
 
-          # Bootstrap downloads and builds internal dependencies
+          # 5. Execute Build
+          echo "Starting rvbootstrap..."
           rvbootstrap
           
-          # RVMK starts the actual OpenRV compilation
+          echo "Starting rvmk..."
           rvmk
 
       - name: Create installation package
