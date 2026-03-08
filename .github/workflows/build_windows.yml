@@ -1,156 +1,106 @@
+```yaml
 name: Build OpenRV Windows (VFX-CY2024)
 
 on:
   workflow_dispatch:
-    inputs:
-      build_type:
-        description: Build configuration
-        default: Release
-        type: choice
-        options:
-          - Release
-          - Debug
 
 jobs:
   build:
     runs-on: windows-2022
-    timeout-minutes: 480 # 8 hours (Note: GitHub Free/Pro limits to 6 hours)
+    timeout-minutes: 480
 
     env:
       BUILD_DIR: C:\rv
+      QT_VERSION: 6.5.3
       PYTHON_VERSION: "3.11"
-      QT_VERSION: "6.5.3"
-      # This helps MSVC tools find their own libraries
-      VSCMD_SKIP_SENDTELEMETRY: 1 
 
     steps:
-      - name: Enable Windows long paths
-        shell: powershell
-        run: |
-          git config --system core.longpaths true
-          Set-ItemProperty -Path 'HKLM:\System\CurrentControlSet\Control\FileSystem' -Name 'LongPathsEnabled' -value 1
 
-      - name: Checkout OpenRV
-        uses: actions/checkout@v4
-        with:
-          submodules: recursive
-          path: temp_src
+    - name: Enable long paths
+      run: git config --system core.longpaths true
 
-      - name: Move repository to short path
-        shell: powershell
-        run: |
-          if (Test-Path $env:BUILD_DIR) { Remove-Item -Recurse -Force $env:BUILD_DIR }
-          New-Item -ItemType Directory -Path $env:BUILD_DIR
-          Move-Item -Path "temp_src\*" -Destination $env:BUILD_DIR
-          Remove-Item -Recurse -Force temp_src
+    - name: Checkout OpenRV
+      uses: actions/checkout@v4
+      with:
+        submodules: recursive
+        path: temp_src
 
-      - name: Free disk space
-        shell: powershell
-        run: |
-          $deletions = @("C:\Program Files\Android", "C:\hostedtoolcache\windows\CodeQL", "C:\hostedtoolcache\windows\Java", "C:\Program Files\dotnet")
-          foreach ($dir in $deletions) {
-            if (Test-Path $dir) { 
-              Write-Host "Deleting $dir..."
-              Remove-Item -Recurse -Force $dir -ErrorAction SilentlyContinue 
-            }
-          }
+    - name: Move repo to short path
+      shell: powershell
+      run: |
+        mkdir $env:BUILD_DIR
+        Move-Item temp_src\* $env:BUILD_DIR
+        Remove-Item temp_src -Recurse -Force
 
-      - name: Setup MSVC
-        uses: ilammy/msvc-dev-cmd@v1
-        with:
-          arch: x64
+    - name: Setup MSVC
+      uses: ilammy/msvc-dev-cmd@v1
 
-      - name: Setup Python
-        uses: actions/setup-python@v5
-        with:
-          python-version: ${{ env.PYTHON_VERSION }}
+    - name: Setup Python
+      uses: actions/setup-python@v5
+      with:
+        python-version: ${{ env.PYTHON_VERSION }}
 
-      - name: Create python3 alias & Set Env
-        shell: powershell
-        run: |
-          $py = (Get-Command python).Source
-          $dir = Split-Path $py
-          if (!(Test-Path "$dir\python3.exe")) { Copy-Item $py "$dir\python3.exe" }
-          # Store the path for the MSYS2 step
-          echo "PYTHON_BIN_PATH=$dir" >> $env:GITHUB_ENV
+    - name: Install build tools
+      shell: powershell
+      run: |
+        choco install strawberryperl nasm winflexbison pkgconfiglite cmake -y
+        python -m pip install --upgrade pip
+        pip install pyyaml requests wheel numpy
 
-      - name: Install system tools
-        shell: powershell
-        run: |
-          choco install strawberryperl nasm winflexbison pkgconfiglite cmake -y
-          rustup toolchain install stable
-          python -m pip install --upgrade pip setuptools wheel
-          pip install pyyaml requests wheel pyzstd py7zr pre-commit numpy
+    - name: Install Qt
+      uses: jurplel/install-qt-action@v4
+      with:
+        version: ${{ env.QT_VERSION }}
+        arch: win64_msvc2019_64
+        dir: C:\Qt
 
-      - name: Install Qt
-        uses: jurplel/install-qt-action@v4
-        with:
-          version: ${{ env.QT_VERSION }}
-          arch: win64_msvc2019_64
-          dir: C:\Qt
+    - name: Setup MSYS2
+      uses: msys2/setup-msys2@v2
+      with:
+        msystem: MINGW64
+        update: true
+        install: >
+          autoconf automake bison flex git libtool nasm p7zip patch unzip zip
+          mingw-w64-x86_64-toolchain
+          mingw-w64-x86_64-meson
+          mingw-w64-x86_64-libarchive
+          mingw-w64-x86_64-glew
 
-      - name: Setup MSYS2
-        uses: msys2/setup-msys2@v2
-        with:
-          msystem: MINGW64
-          update: true
-          # path-type: inherit is crucial to see MSVC/Python from the Windows side
-          path-type: inherit
-          install: >
-            autoconf automake bison flex git libtool nasm p7zip patch unzip zip
-            mingw-w64-x86_64-toolchain
-            mingw-w64-x86_64-meson
-            mingw-w64-x86_64-libarchive
-            mingw-w64-x86_64-glew
+    - name: Configure OpenRV
+      shell: bash
+      working-directory: C:\rv
+      run: |
 
-      - name: Cache OpenRV dependencies
-        uses: actions/cache@v4
-        with:
-          path: |
-            C:\rv\_build\RV_DEPS
-            C:\rv\_build\download
-          key: ${{ runner.os }}-openrv-${{ env.QT_VERSION }}-${{ github.run_id }}
-          restore-keys: |
-            ${{ runner.os }}-openrv-${{ env.QT_VERSION }}-
+        export PATH="$PATH:/c/Program Files/CMake/bin:/c/msys64/mingw64/bin"
+        export QT_HOME="/c/Qt/6.5.3/msvc2019_64"
 
-      - name: Bootstrap and Build
-        shell: msys2 {0}
-        working-directory: C:\rv
-        run: |
-          # 1. Platform Setup
-          export RV_VFX_PLATFORM=CY2024
-          export QT_HOME="C:/Qt/6.5.3/msvc2019_64"
-          
-          # 2. Convert Windows paths to Unix paths for MSYS2 Bash
-          export PYTHON_HOME=$(cygpath -u "$PYTHON_BIN_PATH")
-          export PATH="$PYTHON_HOME:$PATH"
-          
-          # 3. Load OpenRV environment
-          source rvcmds.sh
+        cd /c/rv
 
-          # 4. Set Build Mode
-          if [ "${{ github.event.inputs.build_type }}" = "Debug" ]; then
-            rvdebug
-          else
-            rvrelease
-          fi
+        cmake -B _build \
+          -G "Visual Studio 17 2022" \
+          -A x64 \
+          -DRV_DEPS_QT5_LOCATION=$QT_HOME \
+          -DRV_DEPS_WIN_PERL_ROOT=/c/Strawberry/perl/bin
 
-          # 5. Execute Build
-          echo "Starting rvbootstrap..."
-          rvbootstrap
-          
-          echo "Starting rvmk..."
-          rvmk
+    - name: Build OpenRV
+      shell: bash
+      working-directory: C:\rv
+      run: |
 
-      - name: Create installation package
-        shell: msys2 {0}
-        working-directory: C:\rv
-        run: |
-          source rvcmds.sh
-          rvinst
+        cd /c/rv
+        cmake --build _build --config Release --parallel 4
 
-      - name: Upload artifact
-        uses: actions/upload-artifact@v4
-        with:
-          name: OpenRV-Windows-${{ github.event.inputs.build_type }}
-          path: C:\rv\_install
+    - name: Install OpenRV
+      shell: bash
+      working-directory: C:\rv
+      run: |
+
+        cd /c/rv
+        cmake --install _build --prefix _install
+
+    - name: Upload build
+      uses: actions/upload-artifact@v4
+      with:
+        name: OpenRV-Windows
+        path: C:\rv\_install
+```
