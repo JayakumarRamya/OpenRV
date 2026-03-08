@@ -1,5 +1,5 @@
 
-name: Build OpenRV Windows (VFX-CY2024)
+name: Build OpenRV Windows
 
 on:
   workflow_dispatch:
@@ -11,11 +11,10 @@ jobs:
 
     env:
       QT_VERSION: 5.15.2
-      PYTHON_VERSION: "3.11"
 
     steps:
 
-    - name: Enable Windows long paths
+    - name: Enable long paths
       run: git config --system core.longpaths true
 
     - name: Checkout OpenRV
@@ -29,30 +28,30 @@ jobs:
     - name: Setup Python
       uses: actions/setup-python@v5
       with:
-        python-version: ${{ env.PYTHON_VERSION }}
+        python-version: "3.11"
 
-    - name: Install build tools
+    - name: Install build dependencies
       shell: powershell
       run: |
         choco install strawberryperl nasm winflexbison pkgconfiglite cmake -y
         python -m pip install --upgrade pip
         pip install pyyaml requests wheel numpy
 
-        # Ensure Chocolatey tools are in PATH
+        # make chocolatey tools visible
         echo "C:\ProgramData\chocolatey\bin" >> $env:GITHUB_PATH
 
-    - name: Create flex and bison wrappers
+    - name: Create flex/bison wrappers
       shell: powershell
       run: |
-        Copy-Item "C:\ProgramData\chocolatey\bin\win_flex.exe" `
-                  "C:\ProgramData\chocolatey\bin\flex.exe" -Force
-        Copy-Item "C:\ProgramData\chocolatey\bin\win_bison.exe" `
-                  "C:\ProgramData\chocolatey\bin\bison.exe" -Force
+        Copy-Item C:\ProgramData\chocolatey\bin\win_flex.exe `
+                  C:\ProgramData\chocolatey\bin\flex.exe -Force
+        Copy-Item C:\ProgramData\chocolatey\bin\win_bison.exe `
+                  C:\ProgramData\chocolatey\bin\bison.exe -Force
 
-    - name: Install Qt 5.15 + WebEngine
+    - name: Install Qt
       uses: jurplel/install-qt-action@v4
       with:
-        version: ${{ env.QT_VERSION }}
+        version: 5.15.2
         arch: win64_msvc2019_64
         modules: qtwebengine
         dir: C:\Qt
@@ -65,19 +64,13 @@ jobs:
         install: >
           autoconf automake bison flex git libtool nasm p7zip patch unzip zip
           mingw-w64-x86_64-toolchain
-          mingw-w64-x86_64-meson
-          mingw-w64-x86_64-libarchive
-          mingw-w64-x86_64-glew
 
     - name: Configure OpenRV
       shell: bash
-      working-directory: ${{ github.workspace }}
       run: |
 
-        export PATH="$PATH:/c/Program Files/CMake/bin:/c/msys64/mingw64/bin:/c/ProgramData/chocolatey/bin"
+        export PATH="$PATH:/c/Program Files/CMake/bin:/c/ProgramData/chocolatey/bin:/c/msys64/mingw64/bin"
         export QT_HOME="/c/Qt/5.15.2/msvc2019_64"
-
-        cd "$(cygpath -u "$GITHUB_WORKSPACE")"
 
         cmake -B build \
           -G "Visual Studio 17 2022" \
@@ -86,21 +79,15 @@ jobs:
           -DRV_DEPS_QT_LOCATION=$QT_HOME \
           -DRV_DEPS_WIN_PERL_ROOT=/c/Strawberry/perl/bin
 
-    - name: Build OpenRV
+    - name: Build
       shell: bash
-      working-directory: ${{ github.workspace }}
-      run: |
-        cd "$(cygpath -u "$GITHUB_WORKSPACE")"
-        cmake --build build --config Release --parallel 4
+      run: cmake --build build --config Release --parallel 4
 
-    - name: Install OpenRV
+    - name: Install
       shell: bash
-      working-directory: ${{ github.workspace }}
-      run: |
-        cd "$(cygpath -u "$GITHUB_WORKSPACE")"
-        cmake --install build --prefix install
+      run: cmake --install build --prefix install
 
-    - name: Upload OpenRV artifact
+    - name: Upload artifact
       uses: actions/upload-artifact@v4
       with:
         name: OpenRV-Windows
