@@ -1,69 +1,80 @@
-name: Build OpenRV
+name: Build OpenRV (Windows)
 
 on:
-  workflow_dispatch:
+workflow_dispatch:
 
 jobs:
-  build:
-    runs-on: windows-2022
+build:
+runs-on: windows-2022
 
-    steps:
-      - name: Checkout OpenRV
-        uses: actions/checkout@v4
-        with:
-          submodules: recursive
+steps:
 
-      - name: Setup Python
-        uses: actions/setup-python@v5
-        with:
-          python-version: "3.11"
+  - name: Checkout OpenRV
+    uses: actions/checkout@v4
+    with:
+      submodules: recursive
 
-      - name: Upgrade pip
-        run: python -m pip install --upgrade pip
+  - name: Setup Python
+    uses: actions/setup-python@v5
+    with:
+      python-version: "3.11"
 
-      - name: Install Python requirements
-        run: pip install -r requirements.txt
+  - name: Upgrade pip
+    run: python -m pip install --upgrade pip
 
-      - name: Install system dependencies
-        run: |
-          choco install nasm -y
-          choco install strawberryperl -y
-          choco install winflexbison3 -y
-          choco install cmake -y
+  - name: Install Python requirements
+    run: |
+      pip install pyyaml
+      pip install requests
+      pip install wheel
+      pip install pyzstd
+      pip install py7zr
+      pip install pre-commit
 
-      - name: Install Qt 5.15
-        uses: jurplel/install-qt-action@v3
-        with:
-          version: '5.15.11'
-          host: 'windows'
-          target: 'desktop'
-          arch: 'win64_msvc2019_64'
-          modules: 'qtwebengine'
-          cache: 'true'
+  - name: Install system dependencies
+    run: |
+      choco install nasm -y
+      choco install strawberryperl -y
+      choco install winflexbison3 -y
+      choco install cmake -y
 
-      - name: Create build directory
-        shell: bash
-        run: mkdir -p build
+  - name: Setup MSVC
+    uses: ilammy/msvc-dev-cmd@v1
 
-      - name: Configure CMake
-        shell: bash
-        run: |
-          cd build
-          cmake .. \
-            -G "Visual Studio 17 2022" \
-            -A x64 \
-            -DCMAKE_BUILD_TYPE=Release \
-            -DRV_DEPS_QT_LOCATION="${Qt5_DIR}/.."
+  - name: Install Qt
+    uses: jurplel/install-qt-action@v3
+    with:
+      version: "5.15.2"
+      host: "windows"
+      target: "desktop"
+      arch: "win64_msvc2019_64"
+      modules: "qtwebengine"
+      cache: "true"
 
-      - name: Build OpenRV
-        shell: bash
-        run: |
-          cd build
-          cmake --build . --config Release --parallel 4
+  - name: Create build directory
+    shell: bash
+    run: mkdir -p build
 
-      - name: Upload RV build artifact
-        uses: actions/upload-artifact@v4
-        with:
-          name: OpenRV-Windows
-          path: build/stage
-          if-no-files-found: warn
+  - name: Configure CMake
+    shell: bash
+    run: |
+      cd build
+      cmake .. \
+        -G "Visual Studio 17 2022" \
+        -A x64 \
+        -DCMAKE_BUILD_TYPE=Release \
+        -DRV_DEPS_QT_LOCATION="$Qt5_DIR/.."
+
+  - name: Build OpenRV
+    shell: bash
+    run: |
+      cd build
+      cmake --build . --config Release --parallel 8
+
+  - name: Upload OpenRV Artifact
+    uses: actions/upload-artifact@v4
+    with:
+      name: OpenRV-Windows
+      path: build/stage
+      if-no-files-found: warn
+```
