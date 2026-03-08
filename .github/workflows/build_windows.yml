@@ -45,28 +45,8 @@ jobs:
           Remove-Item -Recurse -Force "C:\hostedtoolcache\windows\CodeQL" -ErrorAction SilentlyContinue
           Remove-Item -Recurse -Force "C:\hostedtoolcache\windows\Java" -ErrorAction SilentlyContinue
 
-      # Install and pin MSVC 14.40
-      - name: Install MSVC v143 (14.40)
-        shell: powershell
-        run: |
-          $vsPath = & "${env:ProgramFiles(x86)}\Microsoft Visual Studio\Installer\vswhere.exe" -latest -property installationPath
-
-          Get-Process -Name "vs_installer","vs_installerservice" -ErrorAction SilentlyContinue | Stop-Process -Force
-
-          $process = Start-Process `
-            -FilePath "${env:ProgramFiles(x86)}\Microsoft Visual Studio\Installer\vs_installer.exe" `
-            -ArgumentList "modify --installPath `"$vsPath`" --add Microsoft.VisualStudio.Component.VC.14.40.x86.x64 --quiet --norestart" `
-            -Wait -PassThru
-
-          if ($process.ExitCode -ne 0 -and $process.ExitCode -ne 3010) {
-            Write-Error "MSVC installation failed"
-            exit 1
-          }
-
       - name: Setup MSVC environment
         uses: ilammy/msvc-dev-cmd@v1
-        with:
-          toolset: "14.40"
 
       - name: Setup Python
         uses: actions/setup-python@v5
