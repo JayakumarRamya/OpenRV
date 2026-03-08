@@ -7,9 +7,7 @@ on:
         description: Build configuration
         default: Release
         type: choice
-        options:
-          - Release
-          - Debug
+        options: [Release, Debug]
 
 jobs:
   build:
@@ -42,21 +40,18 @@ jobs:
       - name: Free Disk Space
         shell: powershell
         run: |
-          Write-Host "Disk space before cleanup:"
-          Get-PSDrive C
-
+          Write-Host "Cleaning runner disk space..."
           Remove-Item -Recurse -Force "C:\Program Files\Android" -ErrorAction SilentlyContinue
           Remove-Item -Recurse -Force "C:\hostedtoolcache\windows\CodeQL" -ErrorAction SilentlyContinue
           Remove-Item -Recurse -Force "C:\hostedtoolcache\windows\Java" -ErrorAction SilentlyContinue
 
-          Write-Host "Disk space after cleanup:"
-          Get-PSDrive C
-
+      # Install and pin MSVC 14.40
       - name: Install MSVC v143 (14.40)
         shell: powershell
         run: |
           $vsPath = & "${env:ProgramFiles(x86)}\Microsoft Visual Studio\Installer\vswhere.exe" -latest -property installationPath
-          Write-Host "Visual Studio path: $vsPath"
+
+          Get-Process -Name "vs_installer","vs_installerservice" -ErrorAction SilentlyContinue | Stop-Process -Force
 
           $process = Start-Process `
             -FilePath "${env:ProgramFiles(x86)}\Microsoft Visual Studio\Installer\vs_installer.exe" `
@@ -64,7 +59,7 @@ jobs:
             -Wait -PassThru
 
           if ($process.ExitCode -ne 0 -and $process.ExitCode -ne 3010) {
-            Write-Error "Installer failed with exit code $($process.ExitCode)"
+            Write-Error "MSVC installation failed"
             exit 1
           }
 
@@ -108,21 +103,9 @@ jobs:
           msystem: MINGW64
           update: true
           install: >
-            autoconf
-            automake
-            bison
-            flex
-            git
-            libtool
-            nasm
-            p7zip
-            patch
-            unzip
-            zip
-            mingw-w64-x86_64-toolchain
-            mingw-w64-x86_64-meson
-            mingw-w64-x86_64-libarchive
-            mingw-w64-x86_64-glew
+            autoconf automake bison flex git libtool nasm p7zip patch unzip zip
+            mingw-w64-x86_64-toolchain mingw-w64-x86_64-meson
+            mingw-w64-x86_64-libarchive mingw-w64-x86_64-glew
 
       - name: Cache OpenRV Dependencies
         uses: actions/cache@v4
@@ -130,7 +113,7 @@ jobs:
           path: |
             ${{ env.BUILD_DIR }}/_build/RV_DEPS
             ${{ env.BUILD_DIR }}/_build/download
-          key: ${{ runner.os }}-openrv-${{ env.PYTHON_VERSION }}-${{ env.QT_VERSION }}-${{ hashFiles('**/cmake/defaults/*.cmake') }}
+          key: ${{ runner.os }}-openrv-${{ env.PYTHON_VERSION }}-${{ env.QT_VERSION }}-${{ hashFiles('cmake/defaults/*.cmake') }}
           restore-keys: |
             ${{ runner.os }}-openrv-${{ env.PYTHON_VERSION }}-
 
@@ -138,11 +121,9 @@ jobs:
         shell: bash
         working-directory: ${{ env.BUILD_DIR }}
         run: |
-
           export PATH="/c/Program Files/CMake/bin:/c/msys64/mingw64/bin:$PATH"
           export ACLOCAL_PATH="/c/msys64/usr/share/aclocal"
           export QT_HOME="/c/Qt/${{ env.QT_VERSION }}/msvc2019_64"
-
           export RV_VFX_PLATFORM=CY2024
 
           source rvcmds.sh
@@ -154,7 +135,6 @@ jobs:
           fi
 
           rvbootstrap
-
           rvmk -j $NUMBER_OF_PROCESSORS
 
       - name: Create installation package
