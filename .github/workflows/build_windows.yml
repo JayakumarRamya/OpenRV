@@ -1,5 +1,5 @@
 
-name: Build OpenRV Windows
+name: Build OpenRV Windows (VFX-CY2024)
 
 on:
   workflow_dispatch:
@@ -15,7 +15,7 @@ jobs:
 
     steps:
 
-    - name: Enable long paths
+    - name: Enable Windows long paths
       run: git config --system core.longpaths true
 
     - name: Checkout OpenRV
@@ -23,7 +23,7 @@ jobs:
       with:
         submodules: recursive
 
-    - name: Setup MSVC
+    - name: Setup MSVC environment
       uses: ilammy/msvc-dev-cmd@v1
 
     - name: Setup Python
@@ -41,7 +41,7 @@ jobs:
 
         echo "C:\ProgramData\chocolatey\bin" >> $env:GITHUB_PATH
 
-    - name: Create flex / bison commands
+    - name: Create flex / bison wrappers
       shell: powershell
       run: |
         Copy-Item "C:\ProgramData\chocolatey\bin\win_flex.exe" `
@@ -56,6 +56,12 @@ jobs:
         arch: win64_msvc2019_64
         modules: qtwebengine
         dir: C:\Qt
+
+    - name: Fix missing Qt folders
+      shell: powershell
+      run: |
+        New-Item -ItemType Directory -Force -Path C:\Qt\5.15.2\msvc2019_64\translations
+        New-Item -ItemType Directory -Force -Path C:\Qt\5.15.2\msvc2019_64\resources
 
     - name: Setup MSYS2 tools
       uses: msys2/setup-msys2@v2
