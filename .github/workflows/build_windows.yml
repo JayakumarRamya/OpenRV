@@ -76,7 +76,7 @@ jobs:
         uses: jurplel/install-qt-action@v4
         with:
           version: ${{ env.QT_VERSION }}
-          arch: win64_msvc2022_64
+          arch: win64_msvc2019_64
           dir: C:\Qt
 
       - name: Setup MSYS2
@@ -107,7 +107,7 @@ jobs:
         run: |
           export PATH="$PATH:/c/Program Files/CMake/bin:/c/msys64/mingw64/bin"
           export ACLOCAL_PATH="/c/msys64/usr/share/aclocal"
-          export QT_HOME="/c/Qt/${{ env.QT_VERSION }}/msvc2022_64"
+          export QT_HOME="/c/Qt/${{ env.QT_VERSION }}/msvc2019_64"
           export RV_VFX_PLATFORM=CY2024
           export MAKEFLAGS="-j$(nproc)"
 
