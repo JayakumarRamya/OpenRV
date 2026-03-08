@@ -24,6 +24,15 @@ jobs:
         python -m pip install --upgrade pip
         pip install pyyaml requests wheel pyzstd py7zr pre-commit numpy
 
+    - name: Install Qt
+      uses: jurplel/install-qt-action@v4
+      with:
+        version: "6.5.3"
+        host: "windows"
+        target: "desktop"
+        arch: "win64_msvc2019_64"
+        dir: "C:/Qt"
+
     - name: Install Chocolatey tools
       run: |
         choco install strawberryperl -y
@@ -60,6 +69,7 @@ jobs:
       shell: bash
       run: |
         export RV_VFX_PLATFORM=CY2025
+        export QT_HOME=/c/Qt/6.5.3/msvc2019_64
         source rvcmds.sh
         rvbootstrap
 
@@ -67,6 +77,7 @@ jobs:
       shell: bash
       run: |
         export RV_VFX_PLATFORM=CY2025
+        export QT_HOME=/c/Qt/6.5.3/msvc2019_64
         source rvcmds.sh
         rvmk
 
