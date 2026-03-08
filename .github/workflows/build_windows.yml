@@ -35,17 +35,20 @@ jobs:
       shell: powershell
       run: |
         choco install strawberryperl nasm winflexbison pkgconfiglite cmake -y
+
         python -m pip install --upgrade pip
         pip install pyyaml requests wheel numpy
 
-        # Ensure chocolatey bin directory is in PATH
+        # ensure Chocolatey tools are available
         echo "C:\ProgramData\chocolatey\bin" >> $env:GITHUB_PATH
 
-    - name: Fix flex / bison command names
+    - name: Fix flex and bison names
       shell: powershell
       run: |
-        Copy-Item C:\ProgramData\chocolatey\bin\win_flex.exe C:\ProgramData\chocolatey\bin\flex.exe
-        Copy-Item C:\ProgramData\chocolatey\bin\win_bison.exe C:\ProgramData\chocolatey\bin\bison.exe
+        Copy-Item "C:\ProgramData\chocolatey\bin\win_flex.exe" `
+                  "C:\ProgramData\chocolatey\bin\flex.exe" -Force
+        Copy-Item "C:\ProgramData\chocolatey\bin\win_bison.exe" `
+                  "C:\ProgramData\chocolatey\bin\bison.exe" -Force
 
     - name: Install Qt 5.15 + WebEngine
       uses: jurplel/install-qt-action@v4
