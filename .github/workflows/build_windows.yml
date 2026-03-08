@@ -13,7 +13,6 @@ jobs:
   build:
     runs-on: windows-2022
     env:
-      # Short path to avoid the 260-char limit (documented in OpenRV guide)
       BUILD_DIR: 'C:\rv'
       PYTHON_VERSION: '3.11'
       QT_VERSION: '6.5.3'
@@ -34,8 +33,14 @@ jobs:
           Move-Item -Path "temp_src\*" -Destination ${{ env.BUILD_DIR }}
         shell: powershell
 
-      # Replaces the broken bus1/setup-msvc action
-      # Force MSVC v143 (14.40) as required by OpenRV documentation
+      # Step to install the specific MSVC 14.40 toolset required by OpenRV docs
+      - name: Install MSVC v143 (14.40)
+        run: |
+          $installationPath = & "${env:ProgramFiles(x86)}\Microsoft Visual Studio\Installer\vswhere.exe" -latest -property installationPath
+          $installArgs = "--add Microsoft.VisualStudio.Component.VC.14.40.x86.x64 --passive --norestart"
+          Start-Process -FilePath "${env:ProgramFiles(x86)}\Microsoft Visual Studio\Installer\vs_installer.exe" -ArgumentList "modify --installPath `"$installationPath`" $installArgs" -Wait
+        shell: powershell
+
       - name: Setup MSVC
         uses: ilammy/msvc-dev-cmd@v1
         with:
@@ -59,7 +64,6 @@ jobs:
           rustup toolchain install stable
           pip install pyyaml requests wheel pyzstd py7zr pre-commit numpy
 
-      # Automated Qt installation for CI
       - name: Install Qt ${{ env.QT_VERSION }}
         uses: jurplel/install-qt-action@v3
         with:
@@ -80,37 +84,12 @@ jobs:
         shell: bash
         working-directory: ${{ env.BUILD_DIR }}
         run: |
-          # Configure environment variables as per OpenRV docs
           export PATH="/c/Program Files/CMake/bin:/c/msys64/mingw64/bin:$PATH"
           export ACLOCAL_PATH="/c/msys64/usr/share/aclocal"
           export QT_HOME="/c/Qt/6.5.3/msvc2019_64"
           
-          # Initialize OpenRV environment
           source rvcmds.sh
           
-          # Set build mode
           if [ "${{ github.event.inputs.build_type }}" == "Debug" ]; then
             rvdebug
           else
-            rvrelease
-          fi
-
-          # First-time setup (Bootstrap)
-          # Piping '3' to select the Windows build profile automatically
-          echo "3" | ./rvbootstrap
-          
-          # Run the actual build
-          rvmk -j $NUMBER_OF_PROCESSORS
-
-      - name: Create Installation Package
-        shell: bash
-        working-directory: ${{ env.BUILD_DIR }}
-        run: |
-          source rvcmds.sh
-          rvinst
-
-      - name: Upload Artifact
-        uses: actions/upload-artifact@v4
-        with:
-          name: OpenRV-Windows-${{ github.event.inputs.build_type }}
-          path: ${{ env.BUILD_DIR }}/_install
