@@ -35,18 +35,17 @@ jobs:
       shell: powershell
       run: |
         choco install strawberryperl nasm winflexbison pkgconfiglite cmake -y
-
         python -m pip install --upgrade pip
         pip install pyyaml requests wheel numpy
 
-        # add choco bin to PATH
+        # Ensure chocolatey bin directory is in PATH
         echo "C:\ProgramData\chocolatey\bin" >> $env:GITHUB_PATH
 
-    - name: Fix flex command for CMake
+    - name: Fix flex / bison command names
       shell: powershell
       run: |
-        copy C:\ProgramData\chocolatey\bin\win_flex.exe C:\ProgramData\chocolatey\bin\flex.exe
-        copy C:\ProgramData\chocolatey\bin\win_bison.exe C:\ProgramData\chocolatey\bin\bison.exe
+        Copy-Item C:\ProgramData\chocolatey\bin\win_flex.exe C:\ProgramData\chocolatey\bin\flex.exe
+        Copy-Item C:\ProgramData\chocolatey\bin\win_bison.exe C:\ProgramData\chocolatey\bin\bison.exe
 
     - name: Install Qt 5.15 + WebEngine
       uses: jurplel/install-qt-action@v4
@@ -99,7 +98,7 @@ jobs:
         cd "$(cygpath -u "$GITHUB_WORKSPACE")"
         cmake --install build --prefix install
 
-    - name: Upload build artifact
+    - name: Upload OpenRV artifact
       uses: actions/upload-artifact@v4
       with:
         name: OpenRV-Windows
