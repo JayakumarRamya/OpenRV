@@ -15,7 +15,7 @@ jobs:
 
     steps:
 
-    - name: Enable Windows long paths
+    - name: Enable long paths
       run: git config --system core.longpaths true
 
     - name: Checkout OpenRV
@@ -39,10 +39,9 @@ jobs:
         python -m pip install --upgrade pip
         pip install pyyaml requests wheel numpy
 
-        # ensure Chocolatey bin is available
         echo "C:\ProgramData\chocolatey\bin" >> $env:GITHUB_PATH
 
-    - name: Create flex and bison commands
+    - name: Create flex / bison commands
       shell: powershell
       run: |
         Copy-Item "C:\ProgramData\chocolatey\bin\win_flex.exe" `
@@ -58,7 +57,7 @@ jobs:
         modules: qtwebengine
         dir: C:\Qt
 
-    - name: Setup MSYS2
+    - name: Setup MSYS2 tools
       uses: msys2/setup-msys2@v2
       with:
         msystem: MINGW64
@@ -74,7 +73,7 @@ jobs:
       shell: bash
       run: |
 
-        export PATH="/c/ProgramData/chocolatey/bin:/c/Program Files/CMake/bin:/c/msys64/mingw64/bin:$PATH"
+        export PATH="/c/ProgramData/chocolatey/bin:/c/msys64/mingw64/bin:/c/Program\ Files/CMake/bin:/c/Program\ Files/Git/usr/bin:$PATH"
         export QT_HOME="/c/Qt/5.15.2/msvc2019_64"
 
         cmake -B build \
