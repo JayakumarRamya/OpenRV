@@ -1,88 +1,113 @@
-name: Build OpenRV Windows
+name: Build OpenRV Windows (VFX-CY2024)
 
 on:
   workflow_dispatch:
+    inputs:
+      build_type:
+        description: 'Build Configuration'
+        default: 'Release'
+        type: choice
+        options: [Release, Debug]
 
 jobs:
   build:
     runs-on: windows-2022
+    env:
+      # OpenRV must be at root to avoid PySide2 path-length errors
+      BUILD_DIR: 'C:\rv'
+      PYTHON_VERSION: '3.11'
+      QT_VERSION: '6.5.3'
 
     steps:
+      - name: Enable Long Paths
+        run: git config --system core.longpaths true
 
-    - name: Checkout OpenRV
-      uses: actions/checkout@v4
-      with:
-        submodules: recursive
+      - name: Checkout OpenRV
+        uses: actions/checkout@v4
+        with:
+          submodules: recursive
+          path: 'temp_src'
 
-    - name: Setup Python
-      uses: actions/setup-python@v5
-      with:
-        python-version: "3.11"
+      - name: Move Source to Root
+        run: |
+          mkdir ${{ env.BUILD_DIR }}
+          Move-Item -Path "temp_src\*" -Destination ${{ env.BUILD_DIR }}
+        shell: powershell
 
-    - name: Install Python dependencies
-      run: |
-        python -m pip install --upgrade pip
-        pip install pyyaml requests wheel pyzstd py7zr pre-commit numpy
+      - name: Setup MSVC (Toolchain 14.40)
+        uses: bus1/setup-msvc@v1
+        with:
+          msvc-version: '14.40' # Matches the docs for OpenRV/Boost compatibility
 
-    - name: Install Qt
-      uses: jurplel/install-qt-action@v4
-      with:
-        version: "6.5.3"
-        host: "windows"
-        target: "desktop"
-        arch: "win64_msvc2019_64"
-        dir: "C:/Qt"
+      - name: Setup Python ${{ env.PYTHON_VERSION }}
+        uses: actions/setup-python@v5
+        with:
+          python-version: ${{ env.PYTHON_VERSION }}
 
-    - name: Install Chocolatey tools
-      run: |
-        choco install strawberryperl -y
-        choco install nasm -y
-        choco install winflexbison -y
-        choco install pkgconfiglite -y
+      - name: Create Python3 Alias
+        run: |
+          $pyPath = (Get-Command python).Source
+          $pyDir = Split-Path $pyPath
+          Copy-Item "$pyPath" "$pyDir\python3.exe"
+        shell: powershell
 
-    - name: Install Rust
-      uses: dtolnay/rust-toolchain@stable
+      - name: Install System Dependencies
+        run: |
+          choco install strawberryperl nasm winflexbison pkgconfiglite cmake --installargs 'ADD_CMAKE_TO_PATH=System' -y
+          rustup toolchain install stable
+          pip install pyyaml requests wheel pyzstd py7zr pre-commit numpy
 
-    - name: Install MSYS2 packages
-      uses: msys2/setup-msys2@v2
-      with:
-        msystem: MINGW64
-        install: >
-          autoconf
-          automake
-          bison
-          flex
-          git
-          libtool
-          nasm
-          p7zip
-          patch
-          unzip
-          zip
-          mingw-w64-x86_64-toolchain
-          mingw-w64-x86_64-meson
-          mingw-w64-x86_64-autotools
-          mingw-w64-x86_64-libarchive
-          mingw-w64-x86_64-glew
+      - name: Install Qt ${{ env.QT_VERSION }}
+        uses: jurplel/install-qt-action@v3
+        with:
+          version: ${{ env.QT_VERSION }}
+          arch: 'win64_msvc2019_64'
+          dir: 'C:\' # Results in C:\Qt\6.5.3\msvc2019_64
 
-    - name: Bootstrap OpenRV
-      shell: bash
-      run: |
-        export RV_VFX_PLATFORM=CY2025
-        export QT_HOME=/c/Qt/6.5.3/msvc2019_64
-        source rvcmds.sh
-        rvbootstrap
+      - name: Setup MSYS2
+        uses: msys2/setup-msys2@v2
+        with:
+          msystem: MINGW64
+          update: true
+          install: >
+            autoconf automake bison flex git libtool nasm p7zip patch unzip zip
+            mingw-w64-x86_64-toolchain mingw-w64-x86_64-meson mingw-w64-x86_64-libarchive
 
-    - name: Build OpenRV
-      shell: bash
-      run: |
-        export RV_VFX_PLATFORM=CY2025
-        export QT_HOME=/c/Qt/6.5.3/msvc2019_64
-        source rvcmds.sh
-        rvmk
+      - name: Bootstrap and Build
+        shell: bash
+        working-directory: ${{ env.BUILD_DIR }}
+        run: |
+          # Configure environment variables as per OpenRV docs
+          export PATH="/c/Program Files/CMake/bin:/c/msys64/mingw64/bin:$PATH"
+          export ACLOCAL_PATH="/c/msys64/usr/share/aclocal"
+          export QT_HOME="/c/Qt/6.5.3/msvc2019_64"
+          
+          # Initialize OpenRV environment
+          source rvcmds.sh
+          
+          # Set build mode
+          if [ "${{ github.event.inputs.build_type }}" == "Debug" ]; then
+            rvdebug
+          else
+            rvrelease
+          fi
 
-    - name: Upload OpenRV build
-      uses: actions/upload-artifact@v4
-      with:
-        name: openrv-windows
-        path: _build/stage/app
+          # First-time setup (Bootstrap)
+          # Echo "3" selects the Windows build profile in the interactive prompt
+          echo "3" | ./rvbootstrap
+          
+          # Run the actual build
+          rvmk -j $NUMBER_OF_PROCESSORS
+
+      - name: Create Installation Package
+        shell: bash
+        working-directory: ${{ env.BUILD_DIR }}
+        run: |
+          source rvcmds.sh
+          rvinst
+
+      - name: Upload Artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: OpenRV-Windows-${{ github.event.inputs.build_type }}
+          path: ${{ env.BUILD_DIR }}/_install
