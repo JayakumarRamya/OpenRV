@@ -1,3 +1,4 @@
+```yaml
 name: Build OpenRV Windows (VFX-CY2024)
 
 on:
@@ -95,16 +96,18 @@ jobs:
         uses: actions/cache@v4
         with:
           path: |
-            ${{ env.BUILD_DIR }}\_build\RV_DEPS
-            ${{ env.BUILD_DIR }}\_build\download
+            C:\rv\_build\RV_DEPS
+            C:\rv\_build\download
           key: ${{ runner.os }}-openrv-${{ env.PYTHON_VERSION }}-${{ env.QT_VERSION }}-${{ hashFiles('cmake/defaults/*.cmake') }}
           restore-keys: |
             ${{ runner.os }}-openrv-${{ env.PYTHON_VERSION }}-
 
       - name: Bootstrap and Build
         shell: bash
-        working-directory: /c/rv
+        working-directory: C:\rv
         run: |
+          cd /c/rv
+
           export PATH="$PATH:/c/Program Files/CMake/bin:/c/msys64/mingw64/bin"
           export ACLOCAL_PATH="/c/msys64/usr/share/aclocal"
           export QT_HOME="/c/Qt/${{ env.QT_VERSION }}/msvc2019_64"
@@ -124,8 +127,9 @@ jobs:
 
       - name: Create installation package
         shell: bash
-        working-directory: /c/rv
+        working-directory: C:\rv
         run: |
+          cd /c/rv
           source ./rvcmds.sh
           rvinst
 
@@ -134,3 +138,4 @@ jobs:
         with:
           name: OpenRV-Windows-${{ github.event.inputs.build_type }}
           path: C:\rv\_install
+```
