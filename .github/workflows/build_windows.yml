@@ -10,12 +10,12 @@ jobs:
     timeout-minutes: 480
 
     env:
-      QT_VERSION: 6.5.3
+      QT_VERSION: 5.15.2
       PYTHON_VERSION: "3.11"
 
     steps:
 
-    - name: Enable long paths
+    - name: Enable Windows long paths
       run: git config --system core.longpaths true
 
     - name: Checkout OpenRV
@@ -38,14 +38,14 @@ jobs:
         python -m pip install --upgrade pip
         pip install pyyaml requests wheel numpy
 
-    - name: Install Qt
+    - name: Install Qt 5.15
       uses: jurplel/install-qt-action@v4
       with:
         version: ${{ env.QT_VERSION }}
         arch: win64_msvc2019_64
         dir: C:\Qt
 
-    - name: Setup MSYS2
+    - name: Setup MSYS2 tools
       uses: msys2/setup-msys2@v2
       with:
         msystem: MINGW64
@@ -63,14 +63,14 @@ jobs:
       run: |
 
         export PATH="$PATH:/c/Program Files/CMake/bin:/c/msys64/mingw64/bin"
-        export QT_HOME="/c/Qt/6.5.3/msvc2019_64"
+        export QT_HOME="/c/Qt/5.15.2/msvc2019_64"
 
         cd "$(cygpath -u "$GITHUB_WORKSPACE")"
 
         cmake -B build \
           -G "Visual Studio 17 2022" \
           -A x64 \
-          -DRV_DEPS_QT5_LOCATION=$QT_HOME \
+          -DRV_DEPS_QT_LOCATION=$QT_HOME \
           -DRV_DEPS_WIN_PERL_ROOT=/c/Strawberry/perl/bin
 
     - name: Build OpenRV
@@ -89,7 +89,7 @@ jobs:
         cd "$(cygpath -u "$GITHUB_WORKSPACE")"
         cmake --install build --prefix install
 
-    - name: Upload build
+    - name: Upload build artifact
       uses: actions/upload-artifact@v4
       with:
         name: OpenRV-Windows
