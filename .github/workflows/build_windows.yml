@@ -38,6 +38,9 @@ jobs:
         python -m pip install --upgrade pip
         pip install pyyaml requests wheel numpy
 
+        # Ensure flex/bison available
+        echo "C:\ProgramData\chocolatey\bin" >> $env:GITHUB_PATH
+
     - name: Install Qt 5.15 + WebEngine
       uses: jurplel/install-qt-action@v4
       with:
@@ -63,8 +66,12 @@ jobs:
       working-directory: ${{ github.workspace }}
       run: |
 
-        export PATH="$PATH:/c/Program Files/CMake/bin:/c/msys64/mingw64/bin"
+        export PATH="$PATH:/c/Program Files/CMake/bin:/c/msys64/mingw64/bin:/c/ProgramData/chocolatey/bin"
         export QT_HOME="/c/Qt/5.15.2/msvc2019_64"
+
+        # ensure flex/bison found
+        export LEX=/c/ProgramData/chocolatey/bin/win_flex.exe
+        export YACC=/c/ProgramData/chocolatey/bin/win_bison.exe
 
         cd "$(cygpath -u "$GITHUB_WORKSPACE")"
 
@@ -79,7 +86,6 @@ jobs:
       shell: bash
       working-directory: ${{ github.workspace }}
       run: |
-
         cd "$(cygpath -u "$GITHUB_WORKSPACE")"
         cmake --build build --config Release --parallel 4
 
@@ -87,7 +93,6 @@ jobs:
       shell: bash
       working-directory: ${{ github.workspace }}
       run: |
-
         cd "$(cygpath -u "$GITHUB_WORKSPACE")"
         cmake --install build --prefix install
 
