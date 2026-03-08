@@ -12,6 +12,10 @@ on:
 jobs:
   build:
     runs-on: windows-2022
+    # OpenRV can take 3-5 hours for a full bootstrap. 
+    # We set a high timeout so GitHub doesn't kill it early.
+    timeout-minutes: 480 
+    
     env:
       BUILD_DIR: 'C:\rv'
       PYTHON_VERSION: '3.11'
@@ -33,15 +37,25 @@ jobs:
           Move-Item -Path "temp_src\*" -Destination ${{ env.BUILD_DIR }}
         shell: powershell
 
-      # Step to install the specific MSVC 14.40 toolset required by OpenRV docs
       - name: Install MSVC v143 (14.40)
         run: |
           $installationPath = & "${env:ProgramFiles(x86)}\Microsoft Visual Studio\Installer\vswhere.exe" -latest -property installationPath
-          $installArgs = "--add Microsoft.VisualStudio.Component.VC.14.40.x86.x64 --passive --norestart"
-          Start-Process -FilePath "${env:ProgramFiles(x86)}\Microsoft Visual Studio\Installer\vs_installer.exe" -ArgumentList "modify --installPath `"$installationPath`" $installArgs" -Wait
+          Write-Host "Modifying Visual Studio at: $installationPath"
+          
+          # Using --quiet to prevent GUI-related freezes in headless CI
+          $installArgs = "modify --installPath `"$installationPath`" --add Microsoft.VisualStudio.Component.VC.14.40.x86.x64 --quiet --norestart"
+          
+          $process = Start-Process -FilePath "${env:ProgramFiles(x86)}\Microsoft Visual Studio\Installer\vs_installer.exe" -ArgumentList $installArgs -Wait -PassThru
+          
+          if ($process.ExitCode -eq 0 -or $process.ExitCode -eq 3010) {
+              Write-Host "MSVC 14.40 installed successfully."
+          } else {
+              Write-Error "Installer failed with exit code $($process.ExitCode)"
+              exit 1
+          }
         shell: powershell
 
-      - name: Setup MSVC
+      - name: Setup MSVC Environment
         uses: ilammy/msvc-dev-cmd@v1
         with:
           toolset: '14.40' 
@@ -58,7 +72,7 @@ jobs:
           Copy-Item "$pyPath" "$pyDir\python3.exe"
         shell: powershell
 
-      - name: Install System Dependencies
+      - name: Install System Tools
         run: |
           choco install strawberryperl nasm winflexbison pkgconfiglite cmake --installargs 'ADD_CMAKE_TO_PATH=System' -y
           rustup toolchain install stable
@@ -84,6 +98,7 @@ jobs:
         shell: bash
         working-directory: ${{ env.BUILD_DIR }}
         run: |
+          # Manual path exports to ensure MSYS2 finds Windows tools correctly
           export PATH="/c/Program Files/CMake/bin:/c/msys64/mingw64/bin:$PATH"
           export ACLOCAL_PATH="/c/msys64/usr/share/aclocal"
           export QT_HOME="/c/Qt/6.5.3/msvc2019_64"
@@ -93,3 +108,24 @@ jobs:
           if [ "${{ github.event.inputs.build_type }}" == "Debug" ]; then
             rvdebug
           else
+            rvrelease
+          fi
+
+          # Select profile 3 (Windows) for the interactive bootstrap
+          echo "3" | ./rvbootstrap
+          
+          # Use all available cores for the build
+          rvmk -j $NUMBER_OF_PROCESSORS
+
+      - name: Create Installation Package
+        shell: bash
+        working-directory: ${{ env.BUILD_DIR }}
+        run: |
+          source rvcmds.sh
+          rvinst
+
+      - name: Upload Artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: OpenRV-Windows-${{ github.event.inputs.build_type }}
+          path: ${{ env.BUILD_DIR }}/_install
