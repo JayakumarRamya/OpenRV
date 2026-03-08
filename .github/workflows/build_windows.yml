@@ -104,40 +104,36 @@ jobs:
         working-directory: ${{ env.BUILD_DIR }}
         run: |
 
-          BUILD_DIR_UNIX=$(cygpath -u "$BUILD_DIR")
-          cd "$BUILD_DIR_UNIX"
-
           export PATH="$PATH:/c/Program Files/CMake/bin:/c/msys64/mingw64/bin"
           export ACLOCAL_PATH="/c/msys64/usr/share/aclocal"
           export QT_HOME="/c/Qt/${QT_VERSION}/msvc2019_64"
           export RV_VFX_PLATFORM=CY2024
-          export MAKEFLAGS="-j$(nproc)"
+
+          bash <<'EOF'
+          set -e
+
+          cd /c/rv
 
           source ./rvcmds.sh
 
-          if [ "${{ github.event.inputs.build_type }}" = "Debug" ]; then
-            rvdebug
-          else
-            rvrelease
-          fi
-
+          rvrelease
           rvbootstrap
           rvmk
+          EOF
 
       - name: Create installation package
         shell: bash
         working-directory: ${{ env.BUILD_DIR }}
         run: |
 
-          BUILD_DIR_UNIX=$(cygpath -u "$BUILD_DIR")
-          cd "$BUILD_DIR_UNIX"
-
+          bash <<'EOF'
+          cd /c/rv
           source ./rvcmds.sh
           rvinst
+          EOF
 
       - name: Upload artifact
         uses: actions/upload-artifact@v4
         with:
           name: OpenRV-Windows-${{ github.event.inputs.build_type }}
           path: C:\rv\_install
-
