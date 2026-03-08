@@ -1,4 +1,4 @@
-```yaml
+
 name: Build OpenRV Windows (VFX-CY2024)
 
 on:
@@ -140,4 +140,4 @@ jobs:
         with:
           name: OpenRV-Windows-${{ github.event.inputs.build_type }}
           path: C:\rv\_install
-```
+
