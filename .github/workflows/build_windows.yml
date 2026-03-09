@@ -21,7 +21,7 @@ jobs:
         with:
           submodules: recursive
 
-      - name: Setup MSVC environment
+      - name: Setup MSVC
         uses: ilammy/msvc-dev-cmd@v1
 
       - name: Setup Python
@@ -43,6 +43,11 @@ jobs:
           python -m pip install --upgrade pip
           pip install pyyaml requests wheel numpy
           echo "C:\ProgramData\chocolatey\bin" >> $env:GITHUB_PATH
+          echo "C:\ProgramData\chocolatey\lib\cmake\tools\cmake-3.27.9-windows-x86_64\bin" >> $env:GITHUB_PATH
+
+      - name: Verify CMake version
+        shell: powershell
+        run: cmake --version
 
       - name: Fix flex / bison
         shell: powershell
@@ -69,6 +74,8 @@ jobs:
           if (!(Test-Path "C:\Qt\5.15.2")) {
             Copy-Item -Recurse "C:\Qt\Qt\5.15.2" "C:\Qt\5.15.2"
           }
+          New-Item -ItemType Directory -Force -Path C:\Qt\5.15.2\msvc2019_64\translations
+          New-Item -ItemType Directory -Force -Path C:\Qt\5.15.2\msvc2019_64\resources
 
       - name: Setup MSYS2 tools
         uses: msys2/setup-msys2@v2
@@ -85,7 +92,7 @@ jobs:
       - name: Configure OpenRV
         shell: bash
         run: |
-          export PATH="/c/ProgramData/chocolatey/bin:/c/msys64/mingw64/bin:/c/Program Files/Git/usr/bin:$PATH"
+          export PATH="/c/ProgramData/chocolatey/lib/cmake/tools/cmake-3.27.9-windows-x86_64/bin:/c/ProgramData/chocolatey/bin:/c/msys64/mingw64/bin:/c/Program Files/Git/usr/bin:$PATH"
           export QT_HOME="/c/Qt/5.15.2/msvc2019_64"
 
           cmake -B build \
@@ -93,6 +100,7 @@ jobs:
             -A x64 \
             -DCMAKE_BUILD_TYPE=Release \
             -DCMAKE_POLICY_VERSION_MINIMUM=3.5 \
+            -DCMAKE_POLICY_DEFAULT_CMP0148=OLD \
             -DCMAKE_PREFIX_PATH=$QT_HOME \
             -DRV_DEPS_QT_LOCATION=$QT_HOME \
             -DRV_DEPS_WIN_PERL_ROOT=/c/Strawberry/perl/bin
@@ -100,14 +108,14 @@ jobs:
       - name: Build OpenRV
         shell: bash
         run: |
-          cmake --build build --config Release --parallel
+          cmake --build build --config Release --parallel 4
 
       - name: Install OpenRV
         shell: bash
         run: |
           cmake --install build --config Release --prefix install
 
-      - name: Upload artifact
+      - name: Upload OpenRV artifact
         uses: actions/upload-artifact@v4
         with:
           name: OpenRV-Windows
