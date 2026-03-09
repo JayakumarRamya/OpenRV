@@ -13,132 +13,111 @@ jobs:
       PYTHON_VERSION: "3.10"
 
     steps:
+      - name: Enable Windows long paths
+        run: git config --system core.longpaths true
 
-    - name: Enable Windows long paths
-      run: git config --system core.longpaths true
+      - name: Checkout OpenRV
+        uses: actions/checkout@v4
+        with:
+          submodules: recursive
 
-    - name: Checkout OpenRV
-      uses: actions/checkout@v4
-      with:
-        submodules: recursive
+      - name: Setup MSVC
+        uses: ilammy/msvc-dev-cmd@v1
 
-    - name: Setup MSVC
-      uses: ilammy/msvc-dev-cmd@v1
+      - name: Setup Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: ${{ env.PYTHON_VERSION }}
 
-    - name: Setup Python
-      uses: actions/setup-python@v5
-      with:
-        python-version: ${{ env.PYTHON_VERSION }}
+      - name: Fix Windows temp path
+        shell: powershell
+        run: |
+          New-Item -ItemType Directory -Force -Path C:\temp
+          echo "TEMP=C:\temp" >> $env:GITHUB_ENV
+          echo "TMP=C:\temp" >> $env:GITHUB_ENV
 
-    - name: Fix Windows temp path
-      shell: powershell
-      run: |
-        New-Item -ItemType Directory -Force -Path C:\temp
-        echo "TEMP=C:\temp" >> $env:GITHUB_ENV
-        echo "TMP=C:\temp" >> $env:GITHUB_ENV
+      - name: Install build tools
+        shell: powershell
+        run: |
+          choco install strawberryperl nasm pkgconfiglite jom -y
+          choco install winflexbison -y
+          choco install cmake --version=3.27.9 -y
 
-    - name: Install build tools
-      shell: powershell
-      run: |
-        choco install strawberryperl nasm pkgconfiglite jom -y
-        choco install winflexbison -y
-        choco install cmake --version=3.27.9 -y
+          python -m pip install --upgrade pip
+          pip install pyyaml requests wheel numpy
 
-        python -m pip install --upgrade pip
-        pip install pyyaml requests wheel numpy
+          echo "C:\ProgramData\chocolatey\bin" >> $env:GITHUB_PATH
 
-        echo "C:\ProgramData\chocolatey\bin" >> $env:GITHUB_PATH
-        echo "C:\ProgramData\chocolatey\lib\cmake\tools\cmake-3.27.9-windows-x86_64\bin" >> $env:GITHUB_PATH
+      - name: Fix flex and bison
+        shell: powershell
+        run: |
+          $bin="C:\ProgramData\chocolatey\bin"
 
-    - name: Verify tools
-      shell: powershell
-      run: |
-        cmake --version
-        where cmake
-        where perl
+          if (Test-Path "$bin\winflex.exe") { Copy-Item "$bin\winflex.exe" "$bin\flex.exe" -Force }
+          if (Test-Path "$bin\win_flex.exe") { Copy-Item "$bin\win_flex.exe" "$bin\flex.exe" -Force }
+          if (Test-Path "$bin\winbison.exe") { Copy-Item "$bin\winbison.exe" "$bin\bison.exe" -Force }
+          if (Test-Path "$bin\win_bison.exe") { Copy-Item "$bin\win_bison.exe" "$bin\bison.exe" -Force }
 
-    - name: Fix flex and bison
-      shell: powershell
-      run: |
-        $bin="C:\ProgramData\chocolatey\bin"
+          flex --version
+          bison --version
 
-        if (Test-Path "$bin\winflex.exe") {
-            Copy-Item "$bin\winflex.exe" "$bin\flex.exe" -Force
-        }
+      - name: Install Qt
+        uses: jurplel/install-qt-action@v4
+        with:
+          version: ${{ env.QT_VERSION }}
+          arch: win64_msvc2019_64
+          modules: qtwebengine
+          dir: C:\Qt
 
-        if (Test-Path "$bin\win_flex.exe") {
-            Copy-Item "$bin\win_flex.exe" "$bin\flex.exe" -Force
-        }
+      - name: Fix Qt layout
+        shell: powershell
+        run: |
+          if (!(Test-Path "C:\Qt\5.15.2")) {
+            Copy-Item -Recurse "C:\Qt\Qt\5.15.2" "C:\Qt\5.15.2"
+          }
 
-        if (Test-Path "$bin\winbison.exe") {
-            Copy-Item "$bin\winbison.exe" "$bin\bison.exe" -Force
-        }
+      - name: Setup MSYS2 tools
+        uses: msys2/setup-msys2@v2
+        with:
+          msystem: MINGW64
+          update: true
+          install: >-
+            autoconf automake bison flex git libtool nasm p7zip patch unzip zip
+            mingw-w64-x86_64-toolchain
+            mingw-w64-x86_64-meson
+            mingw-w64-x86_64-libarchive
+            mingw-w64-x86_64-glew
 
-        if (Test-Path "$bin\win_bison.exe") {
-            Copy-Item "$bin\win_bison.exe" "$bin\bison.exe" -Force
-        }
+      - name: Configure OpenRV
+        shell: bash
+        run: |
+          export PATH="/c/ProgramData/chocolatey/bin:/c/msys64/mingw64/bin:/c/Program Files/Git/usr/bin:$PATH"
+          export QT_HOME="/c/Qt/5.15.2/msvc2019_64"
 
-        flex --version
-        bison --version
+          cmake -B build \
+            -G "Visual Studio 17 2022" \
+            -A x64 \
+            -DCMAKE_BUILD_TYPE=Release \
+            -DCMAKE_POLICY_VERSION_MINIMUM=3.5 \
+            -DCMAKE_POLICY_DEFAULT_CMP0148=OLD \
+            -DRV_BUILD_PYSIDE=OFF \
+            -DRV_BUILD_DOCS=OFF \
+            -DCMAKE_PREFIX_PATH=$QT_HOME \
+            -DRV_DEPS_QT_LOCATION=$QT_HOME \
+            -DRV_DEPS_WIN_PERL_ROOT=/c/Strawberry/perl/bin
 
-    - name: Install Qt
-      uses: jurplel/install-qt-action@v4
-      with:
-        version: ${{ env.QT_VERSION }}
-        arch: win64_msvc2019_64
-        modules: qtwebengine
-        dir: C:\Qt
+      - name: Build OpenRV
+        shell: bash
+        run: |
+          cmake --build build --config Release --parallel 4
 
-    - name: Fix Qt layout
-      shell: powershell
-      run: |
-        if (!(Test-Path "C:\Qt\5.15.2")) {
-          Copy-Item -Recurse "C:\Qt\Qt\5.15.2" "C:\Qt\5.15.2"
-        }
+      - name: Install OpenRV
+        shell: bash
+        run: |
+          cmake --install build --config Release --prefix install
 
-        New-Item -ItemType Directory -Force -Path C:\Qt\5.15.2\msvc2019_64\translations
-        New-Item -ItemType Directory -Force -Path C:\Qt\5.15.2\msvc2019_64\resources
-
-    - name: Setup MSYS2 tools
-      uses: msys2/setup-msys2@v2
-      with:
-        msystem: MINGW64
-        update: true
-        install: >
-          autoconf automake bison flex git libtool nasm p7zip patch unzip zip
-          mingw-w64-x86_64-toolchain
-          mingw-w64-x86_64-meson
-          mingw-w64-x86_64-libarchive
-          mingw-w64-x86_64-glew
-
-    - name: Configure OpenRV
-      shell: bash
-      run: |
-        export PATH="/c/ProgramData/chocolatey/bin:/c/msys64/mingw64/bin:/c/Program Files/Git/usr/bin:$PATH"
-        export QT_HOME="/c/Qt/5.15.2/msvc2019_64"
-
-        cmake -B build \
-          -G "Visual Studio 17 2022" \
-          -A x64 \
-          -DCMAKE_BUILD_TYPE=Release \
-          -DCMAKE_POLICY_VERSION_MINIMUM=3.5 \
-          -DCMAKE_POLICY_DEFAULT_CMP0148=OLD \
-          -DCMAKE_PREFIX_PATH=$QT_HOME \
-          -DRV_DEPS_QT_LOCATION=$QT_HOME \
-          -DRV_DEPS_WIN_PERL_ROOT=/c/Strawberry/perl/bin
-
-    - name: Build OpenRV
-      shell: bash
-      run: |
-        cmake --build build --config Release --parallel 4
-
-    - name: Install OpenRV
-      shell: bash
-      run: |
-        cmake --install build --config Release --prefix install
-
-    - name: Upload artifact
-      uses: actions/upload-artifact@v4
-      with:
-        name: OpenRV-Windows
-        path: install
+      - name: Upload artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: OpenRV-Windows
+          path: install
