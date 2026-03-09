@@ -47,24 +47,18 @@ jobs:
         echo "C:\ProgramData\chocolatey\bin" >> $env:GITHUB_PATH
         echo "C:\Program Files\CMake\bin" >> $env:GITHUB_PATH
 
-    # Fix flex/bison naming (handles both old and new winflexbison packages)
+    # Create flex/bison wrappers so CMake can detect them
     - name: Create flex / bison wrappers
       shell: powershell
       run: |
         $bin="C:\ProgramData\chocolatey\bin"
 
-        if (Test-Path "$bin\win_flex.exe") {
-            Copy-Item "$bin\win_flex.exe" "$bin\flex.exe" -Force
-        }
-        elseif (Test-Path "$bin\winflex.exe") {
-            Copy-Item "$bin\winflex.exe" "$bin\flex.exe" -Force
+        if (Test-Path "$bin\winflex.exe") {
+          cmd /c mklink "$bin\flex.exe" "$bin\winflex.exe"
         }
 
-        if (Test-Path "$bin\win_bison.exe") {
-            Copy-Item "$bin\win_bison.exe" "$bin\bison.exe" -Force
-        }
-        elseif (Test-Path "$bin\winbison.exe") {
-            Copy-Item "$bin\winbison.exe" "$bin\bison.exe" -Force
+        if (Test-Path "$bin\winbison.exe") {
+          cmd /c mklink "$bin\bison.exe" "$bin\winbison.exe"
         }
 
     - name: Install Qt
@@ -102,7 +96,7 @@ jobs:
       shell: bash
       run: |
 
-        export PATH="/c/ProgramData/chocolatey/bin:/c/msys64/mingw64/bin:/c/Program\ Files/CMake/bin:/c/Program\ Files/Git/usr/bin:$PATH"
+        export PATH="/c/ProgramData/chocolatey/bin:/c/msys64/mingw64/bin:/c/Program Files/CMake/bin:/c/Program Files/Git/usr/bin:$PATH"
         export QT_HOME="/c/Qt/5.15.2/msvc2019_64"
 
         cmake -B build \
