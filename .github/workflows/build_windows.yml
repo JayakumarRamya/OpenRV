@@ -22,7 +22,7 @@ jobs:
       with:
         submodules: recursive
 
-    - name: Setup MSVC
+    - name: Setup MSVC environment
       uses: ilammy/msvc-dev-cmd@v1
 
     - name: Setup Python
@@ -30,13 +30,20 @@ jobs:
       with:
         python-version: ${{ env.PYTHON_VERSION }}
 
+    # ---- FIX: shorten Windows temp path (fixes OpenTimelineIO build error) ----
+    - name: Fix Windows temp path length
+      shell: powershell
+      run: |
+        New-Item -ItemType Directory -Force -Path C:\temp
+        echo "TEMP=C:\temp" >> $env:GITHUB_ENV
+        echo "TMP=C:\temp" >> $env:GITHUB_ENV
+
     - name: Install build tools
       shell: powershell
       run: |
         choco install strawberryperl nasm winflexbison pkgconfiglite cmake -y
         python -m pip install --upgrade pip
         pip install pyyaml requests wheel numpy
-
         echo "C:\ProgramData\chocolatey\bin" >> $env:GITHUB_PATH
 
     - name: Create flex / bison wrappers
@@ -47,7 +54,7 @@ jobs:
         Copy-Item "C:\ProgramData\chocolatey\bin\win_bison.exe" `
                   "C:\ProgramData\chocolatey\bin\bison.exe" -Force
 
-    - name: Install Qt
+    - name: Install Qt 5.15 + WebEngine
       uses: jurplel/install-qt-action@v4
       with:
         version: ${{ env.QT_VERSION }}
@@ -55,13 +62,14 @@ jobs:
         modules: qtwebengine
         dir: C:\Qt
 
+    # ---- FIX: OpenRV expects these folders ----
     - name: Fix missing Qt folders
       shell: powershell
       run: |
         New-Item -ItemType Directory -Force -Path C:\Qt\5.15.2\msvc2019_64\translations
         New-Item -ItemType Directory -Force -Path C:\Qt\5.15.2\msvc2019_64\resources
 
-    - name: Setup MSYS2
+    - name: Setup MSYS2 tools
       uses: msys2/setup-msys2@v2
       with:
         msystem: MINGW64
@@ -96,7 +104,7 @@ jobs:
     - name: Install OpenRV
       shell: bash
       run: |
-        cmake --install build --prefix install
+        cmake --install build --config Release --prefix install
 
     - name: Upload OpenRV artifact
       uses: actions/upload-artifact@v4
