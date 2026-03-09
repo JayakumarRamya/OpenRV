@@ -13,6 +13,7 @@ jobs:
       PYTHON_VERSION: "3.10"
 
     steps:
+
       - name: Enable Windows long paths
         run: git config --system core.longpaths true
 
@@ -29,7 +30,7 @@ jobs:
         with:
           python-version: ${{ env.PYTHON_VERSION }}
 
-      - name: Fix Windows temp path
+      - name: Fix Windows TEMP path
         shell: powershell
         run: |
           New-Item -ItemType Directory -Force -Path C:\temp
@@ -47,6 +48,13 @@ jobs:
           pip install pyyaml requests wheel numpy
 
           echo "C:\ProgramData\chocolatey\bin" >> $env:GITHUB_PATH
+
+      - name: Verify tools
+        shell: powershell
+        run: |
+          cmake --version
+          where cmake
+          where perl
 
       - name: Fix flex and bison
         shell: powershell
@@ -75,6 +83,9 @@ jobs:
           if (!(Test-Path "C:\Qt\5.15.2")) {
             Copy-Item -Recurse "C:\Qt\Qt\5.15.2" "C:\Qt\5.15.2"
           }
+
+          New-Item -ItemType Directory -Force -Path C:\Qt\5.15.2\msvc2019_64\translations
+          New-Item -ItemType Directory -Force -Path C:\Qt\5.15.2\msvc2019_64\resources
 
       - name: Setup MSYS2 tools
         uses: msys2/setup-msys2@v2
