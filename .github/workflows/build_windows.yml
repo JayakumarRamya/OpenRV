@@ -13,6 +13,7 @@ jobs:
       PYTHON_VERSION: "3.11"
 
     steps:
+
       - name: Enable Windows long paths
         run: git config --system core.longpaths true
 
@@ -29,7 +30,7 @@ jobs:
         with:
           python-version: ${{ env.PYTHON_VERSION }}
 
-      - name: Fix Windows temp path
+      - name: Fix Windows TEMP path
         shell: powershell
         run: |
           New-Item -ItemType Directory -Force -Path C:\temp
@@ -42,6 +43,7 @@ jobs:
           choco install strawberryperl nasm winflexbison pkgconfiglite cmake --version=3.27.9 jom -y
           python -m pip install --upgrade pip
           pip install pyyaml requests wheel numpy
+
           echo "C:\ProgramData\chocolatey\bin" >> $env:GITHUB_PATH
           echo "C:\ProgramData\chocolatey\lib\cmake\tools\cmake-3.27.9-windows-x86_64\bin" >> $env:GITHUB_PATH
 
@@ -49,16 +51,29 @@ jobs:
         shell: powershell
         run: cmake --version
 
-      - name: Fix flex / bison
+      - name: Ensure flex and bison exist
         shell: powershell
         run: |
           $bin="C:\ProgramData\chocolatey\bin"
+
+          if (Test-Path "$bin\win_flex.exe") {
+            Copy-Item "$bin\win_flex.exe" "$bin\flex.exe" -Force
+          }
+
           if (Test-Path "$bin\winflex.exe") {
             Copy-Item "$bin\winflex.exe" "$bin\flex.exe" -Force
           }
+
+          if (Test-Path "$bin\win_bison.exe") {
+            Copy-Item "$bin\win_bison.exe" "$bin\bison.exe" -Force
+          }
+
           if (Test-Path "$bin\winbison.exe") {
             Copy-Item "$bin\winbison.exe" "$bin\bison.exe" -Force
           }
+
+          dir $bin | findstr flex
+          dir $bin | findstr bison
 
       - name: Install Qt
         uses: jurplel/install-qt-action@v4
@@ -74,6 +89,7 @@ jobs:
           if (!(Test-Path "C:\Qt\5.15.2")) {
             Copy-Item -Recurse "C:\Qt\Qt\5.15.2" "C:\Qt\5.15.2"
           }
+
           New-Item -ItemType Directory -Force -Path C:\Qt\5.15.2\msvc2019_64\translations
           New-Item -ItemType Directory -Force -Path C:\Qt\5.15.2\msvc2019_64\resources
 
