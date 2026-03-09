@@ -30,7 +30,7 @@ jobs:
         with:
           python-version: ${{ env.PYTHON_VERSION }}
 
-      - name: Fix Windows TEMP path
+      - name: Fix Windows temp path
         shell: powershell
         run: |
           New-Item -ItemType Directory -Force -Path C:\temp
@@ -43,29 +43,18 @@ jobs:
           choco install strawberryperl nasm pkgconfiglite jom -y
           choco install winflexbison -y
           choco install cmake --version=3.27.9 -y
-
           python -m pip install --upgrade pip
           pip install pyyaml requests wheel numpy
-
           echo "C:\ProgramData\chocolatey\bin" >> $env:GITHUB_PATH
-
-      - name: Verify tools
-        shell: powershell
-        run: |
-          cmake --version
-          where cmake
-          where perl
 
       - name: Fix flex and bison
         shell: powershell
         run: |
           $bin="C:\ProgramData\chocolatey\bin"
-
           if (Test-Path "$bin\winflex.exe") { Copy-Item "$bin\winflex.exe" "$bin\flex.exe" -Force }
           if (Test-Path "$bin\win_flex.exe") { Copy-Item "$bin\win_flex.exe" "$bin\flex.exe" -Force }
           if (Test-Path "$bin\winbison.exe") { Copy-Item "$bin\winbison.exe" "$bin\bison.exe" -Force }
           if (Test-Path "$bin\win_bison.exe") { Copy-Item "$bin\win_bison.exe" "$bin\bison.exe" -Force }
-
           flex --version
           bison --version
 
@@ -112,6 +101,7 @@ jobs:
             -DCMAKE_POLICY_VERSION_MINIMUM=3.5 \
             -DCMAKE_POLICY_DEFAULT_CMP0148=OLD \
             -DRV_BUILD_PYSIDE=OFF \
+            -DRV_DEPS_PYSIDE2_BUILD=OFF \
             -DRV_BUILD_DOCS=OFF \
             -DCMAKE_PREFIX_PATH=$QT_HOME \
             -DRV_DEPS_QT_LOCATION=$QT_HOME \
