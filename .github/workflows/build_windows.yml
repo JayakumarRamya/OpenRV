@@ -31,7 +31,7 @@ jobs:
       with:
         python-version: ${{ env.PYTHON_VERSION }}
 
-    # Fix long Windows temp path (OpenTimelineIO build issue)
+    # Fix Windows TEMP path (OpenTimelineIO build issue)
     - name: Fix Windows temp path
       shell: powershell
       run: |
@@ -42,10 +42,11 @@ jobs:
     - name: Install build tools
       shell: powershell
       run: |
-        choco install strawberryperl nasm winflexbison pkgconfiglite cmake jom -y
+        choco install strawberryperl nasm winflexbison pkgconfiglite cmake --version=3.27.9 jom -y
         python -m pip install --upgrade pip
         pip install pyyaml requests wheel numpy
         echo "C:\ProgramData\chocolatey\bin" >> $env:GITHUB_PATH
+        echo "C:\Program Files\CMake\bin" >> $env:GITHUB_PATH
 
     # Fix flex/bison naming
     - name: Create flex / bison wrappers
@@ -91,7 +92,7 @@ jobs:
       shell: bash
       run: |
 
-        export PATH="/c/ProgramData/chocolatey/bin:/c/msys64/mingw64/bin:/c/Program Files/CMake/bin:/c/Program Files/Git/usr/bin:$PATH"
+        export PATH="/c/ProgramData/chocolatey/bin:/c/msys64/mingw64/bin:/c/Program\ Files/CMake/bin:/c/Program\ Files/Git/usr/bin:$PATH"
         export QT_HOME="/c/Qt/5.15.2/msvc2019_64"
 
         cmake -B build \
