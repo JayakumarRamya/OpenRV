@@ -1,4 +1,5 @@
-name: Build OpenRV Windows (VFX-CY2024)
+
+name: Build OpenRV Windows
 
 on:
   workflow_dispatch:
@@ -14,15 +15,15 @@ jobs:
 
     steps:
 
-    - name: Enable Windows long paths
+    - name: Enable long paths
       run: git config --system core.longpaths true
 
-    - name: Checkout OpenRV
+    - name: Checkout source
       uses: actions/checkout@v4
       with:
         submodules: recursive
 
-    - name: Setup MSVC environment
+    - name: Setup MSVC
       uses: ilammy/msvc-dev-cmd@v1
 
     - name: Setup Python
@@ -30,15 +31,14 @@ jobs:
       with:
         python-version: ${{ env.PYTHON_VERSION }}
 
-    # ---- FIX: shorten Windows temp path (fixes OpenTimelineIO build error) ----
-    - name: Fix Windows temp path length
+    - name: Fix Windows temp path
       shell: powershell
       run: |
         New-Item -ItemType Directory -Force -Path C:\temp
         echo "TEMP=C:\temp" >> $env:GITHUB_ENV
         echo "TMP=C:\temp" >> $env:GITHUB_ENV
 
-    - name: Install build tools
+    - name: Install tools
       shell: powershell
       run: |
         choco install strawberryperl nasm winflexbison pkgconfiglite cmake -y
@@ -46,15 +46,13 @@ jobs:
         pip install pyyaml requests wheel numpy
         echo "C:\ProgramData\chocolatey\bin" >> $env:GITHUB_PATH
 
-    - name: Create flex / bison wrappers
+    - name: Fix flex / bison names
       shell: powershell
       run: |
-        Copy-Item "C:\ProgramData\chocolatey\bin\win_flex.exe" `
-                  "C:\ProgramData\chocolatey\bin\flex.exe" -Force
-        Copy-Item "C:\ProgramData\chocolatey\bin\win_bison.exe" `
-                  "C:\ProgramData\chocolatey\bin\bison.exe" -Force
+        Copy-Item C:\ProgramData\chocolatey\bin\win_flex.exe C:\ProgramData\chocolatey\bin\flex.exe -Force
+        Copy-Item C:\ProgramData\chocolatey\bin\win_bison.exe C:\ProgramData\chocolatey\bin\bison.exe -Force
 
-    - name: Install Qt 5.15 + WebEngine
+    - name: Install Qt
       uses: jurplel/install-qt-action@v4
       with:
         version: ${{ env.QT_VERSION }}
@@ -62,24 +60,25 @@ jobs:
         modules: qtwebengine
         dir: C:\Qt
 
-    # ---- FIX: OpenRV expects these folders ----
-    - name: Fix missing Qt folders
+    - name: Fix Qt folder layout
       shell: powershell
       run: |
+        if (!(Test-Path "C:\Qt\5.15.2")) {
+          Copy-Item -Recurse "C:\Qt\Qt\5.15.2" "C:\Qt\5.15.2"
+        }
+
         New-Item -ItemType Directory -Force -Path C:\Qt\5.15.2\msvc2019_64\translations
         New-Item -ItemType Directory -Force -Path C:\Qt\5.15.2\msvc2019_64\resources
 
-    - name: Setup MSYS2 tools
+    - name: Setup MSYS2
       uses: msys2/setup-msys2@v2
       with:
         msystem: MINGW64
         update: true
         install: >
-          autoconf automake bison flex git libtool nasm p7zip patch unzip zip
+          autoconf automake bison flex git libtool nasm
           mingw-w64-x86_64-toolchain
           mingw-w64-x86_64-meson
-          mingw-w64-x86_64-libarchive
-          mingw-w64-x86_64-glew
 
     - name: Configure OpenRV
       shell: bash
@@ -92,6 +91,7 @@ jobs:
           -G "Visual Studio 17 2022" \
           -A x64 \
           -DCMAKE_BUILD_TYPE=Release \
+          -DCMAKE_POLICY_VERSION_MINIMUM=3.5 \
           -DCMAKE_PREFIX_PATH=$QT_HOME \
           -DRV_DEPS_QT_LOCATION=$QT_HOME \
           -DRV_DEPS_WIN_PERL_ROOT=/c/Strawberry/perl/bin
@@ -106,7 +106,7 @@ jobs:
       run: |
         cmake --install build --config Release --prefix install
 
-    - name: Upload OpenRV artifact
+    - name: Upload artifact
       uses: actions/upload-artifact@v4
       with:
         name: OpenRV-Windows
