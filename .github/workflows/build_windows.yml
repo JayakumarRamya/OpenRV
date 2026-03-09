@@ -31,13 +31,19 @@ jobs:
       with:
         python-version: ${{ env.PYTHON_VERSION }}
 
-    # Fix Windows TEMP path (avoids OpenTimelineIO build errors)
+    # Fix long TEMP paths (OpenTimelineIO issue)
     - name: Fix Windows temp path
       shell: powershell
       run: |
         New-Item -ItemType Directory -Force -Path C:\temp
         echo "TEMP=C:\temp" >> $env:GITHUB_ENV
         echo "TMP=C:\temp" >> $env:GITHUB_ENV
+
+    # Disable PySide parallel jobs (fix --jobs error)
+    - name: Disable PySide parallel build
+      shell: powershell
+      run: |
+        echo "RV_DEPS_PYSIDE_PARALLEL=1" >> $env:GITHUB_ENV
 
     - name: Install build tools
       shell: powershell
@@ -64,7 +70,7 @@ jobs:
         modules: qtwebengine
         dir: C:\Qt
 
-    # OpenRV expects Qt without extra "Qt" folder
+    # OpenRV expects Qt without nested Qt folder
     - name: Fix Qt folder layout
       shell: powershell
       run: |
