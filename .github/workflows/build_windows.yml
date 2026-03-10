@@ -74,7 +74,8 @@ jobs:
         with:
           version: ${{ env.QT_VERSION }}
           arch: win64_msvc2019_64
-          modules: qtwebengine
+          # Added missing dependencies required for PySide2 WebEngine bindings
+          modules: qtwebengine qtwebchannel qtpositioning
           dir: C:\Qt
 
       - name: Fix Qt layout
@@ -112,13 +113,17 @@ jobs:
             mingw-w64-x86_64-libarchive
             mingw-w64-x86_64-glew
 
+      - name: Inject MSYS2 into Global PATH
+        shell: bash
+        run: |
+          echo "/c/msys64/usr/bin" >> $GITHUB_PATH
+          echo "/c/msys64/mingw64/bin" >> $GITHUB_PATH
+
       - name: Configure OpenRV
         shell: bash
         run: |
           set -e
 
-          # The PATH fix for MSYS2 remains to prevent the 'nasm' and 'autoreconf' errors
-          export PATH="/c/msys64/usr/bin:/c/ProgramData/chocolatey/bin:/c/msys64/mingw64/bin:/c/Program\ Files/Git/usr/bin:$PATH"
           export QT_HOME="/c/Qt/5.15.2/msvc2019_64"
 
           cmake -B build \
