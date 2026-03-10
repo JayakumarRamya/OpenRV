@@ -5,7 +5,7 @@ on:
 
 jobs:
   build:
-    runs-on: windows-2019
+    runs-on: windows-2022
     timeout-minutes: 480
 
     env:
@@ -30,6 +30,8 @@ jobs:
 
       - name: Setup MSVC
         uses: ilammy/msvc-dev-cmd@v1
+        with:
+          toolset: 14.2
 
       - name: Setup Python
         uses: actions/setup-python@v5
@@ -115,11 +117,13 @@ jobs:
         run: |
           set -e
 
+          # The PATH fix for MSYS2 remains to prevent the 'nasm' and 'autoreconf' errors
           export PATH="/c/msys64/usr/bin:/c/ProgramData/chocolatey/bin:/c/msys64/mingw64/bin:/c/Program\ Files/Git/usr/bin:$PATH"
           export QT_HOME="/c/Qt/5.15.2/msvc2019_64"
 
           cmake -B build \
-            -G "Visual Studio 16 2019" \
+            -G "Visual Studio 17 2022" \
+            -T v142 \
             -A x64 \
             -DCMAKE_BUILD_TYPE=Release \
             -DCMAKE_POLICY_VERSION_MINIMUM=3.5 \
