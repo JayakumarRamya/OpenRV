@@ -57,10 +57,8 @@ jobs:
         shell: powershell
         run: |
           $bin="C:\ProgramData\chocolatey\bin"
-
           if (Test-Path "$bin\winflex.exe") { Copy-Item "$bin\winflex.exe" "$bin\flex.exe" -Force }
           if (Test-Path "$bin\win_flex.exe") { Copy-Item "$bin\win_flex.exe" "$bin\flex.exe" -Force }
-
           if (Test-Path "$bin\winbison.exe") { Copy-Item "$bin\winbison.exe" "$bin\bison.exe" -Force }
           if (Test-Path "$bin\win_bison.exe") { Copy-Item "$bin\win_bison.exe" "$bin\bison.exe" -Force }
 
@@ -78,7 +76,6 @@ jobs:
           if (!(Test-Path "C:\Qt\5.15.2")) {
             Copy-Item -Recurse "C:\Qt\Qt\5.15.2" "C:\Qt\5.15.2"
           }
-
           New-Item -ItemType Directory -Force -Path C:\Qt\5.15.2\msvc2019_64\translations
           New-Item -ItemType Directory -Force -Path C:\Qt\5.15.2\msvc2019_64\resources
 
@@ -88,7 +85,20 @@ jobs:
           msystem: MINGW64
           update: true
           install: >
-            autoconf automake bison flex git libtool nasm p7zip patch unzip zip
+            autoconf
+            automake
+            libtool
+            pkgconf
+            meson
+            ninja
+            bison
+            flex
+            git
+            nasm
+            p7zip
+            patch
+            unzip
+            zip
             mingw-w64-x86_64-toolchain
             mingw-w64-x86_64-meson
             mingw-w64-x86_64-libarchive
@@ -98,7 +108,6 @@ jobs:
         shell: bash
         run: |
           set -e
-
           export PATH="/c/ProgramData/chocolatey/bin:/c/msys64/mingw64/bin:/c/Program\ Files/Git/usr/bin:$PATH"
           export QT_HOME="/c/Qt/5.15.2/msvc2019_64"
 
