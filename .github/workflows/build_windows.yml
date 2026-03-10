@@ -5,7 +5,7 @@ on:
 
 jobs:
   build:
-    runs-on: windows-2022
+    runs-on: windows-2019
     timeout-minutes: 480
 
     env:
@@ -115,11 +115,11 @@ jobs:
         run: |
           set -e
 
-          export PATH="/c/ProgramData/chocolatey/bin:/c/msys64/mingw64/bin:/c/Program\ Files/Git/usr/bin:$PATH"
+          export PATH="/c/msys64/usr/bin:/c/ProgramData/chocolatey/bin:/c/msys64/mingw64/bin:/c/Program\ Files/Git/usr/bin:$PATH"
           export QT_HOME="/c/Qt/5.15.2/msvc2019_64"
 
           cmake -B build \
-            -G "Visual Studio 17 2022" \
+            -G "Visual Studio 16 2019" \
             -A x64 \
             -DCMAKE_BUILD_TYPE=Release \
             -DCMAKE_POLICY_VERSION_MINIMUM=3.5 \
