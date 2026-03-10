@@ -74,8 +74,7 @@ jobs:
         with:
           version: ${{ env.QT_VERSION }}
           arch: win64_msvc2019_64
-          # Added missing dependencies required for PySide2 WebEngine bindings
-          modules: qtwebengine qtwebchannel qtpositioning
+          modules: qtwebengine
           dir: C:\Qt
 
       - name: Fix Qt layout
