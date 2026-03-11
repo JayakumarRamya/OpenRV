@@ -1,137 +1,163 @@
-name: Build OpenRV (Windows)
+name: Build OpenRV Windows (VFX-CY2024)
 
 on:
-  push:
-    branches:
-      - main
+  workflow_dispatch:
 
 jobs:
-  build-windows:
-    name: Windows (VS 2022 + MSYS2)
+  build:
     runs-on: windows-2022
+    timeout-minutes: 480
 
-    defaults:
-      run:
-        # All steps run inside an MSYS2 MINGW64 shell so that Unix-style
-        # utilities (grep, flex, bison, nasm, …) are on PATH.  The actual
-        # compiler is still MSVC – MSYS2 is NOT used as the toolchain.
-        shell: msys2 {0}
+    env:
+      QT_VERSION: 5.15.2
+      PYTHON_VERSION: "3.10"
 
     steps:
-      # ── 1. Checkout ───────────────────────────────────────────────────────
-      - name: Checkout with submodules
+
+      - name: Enable Windows long paths
+        run: git config --system core.longpaths true
+
+      - name: Checkout OpenRV
         uses: actions/checkout@v4
         with:
           submodules: recursive
-          fetch-depth: 0
 
-      # ── 2. MSYS2 (utilities only, NOT the compiler) ───────────────────────
-      - name: Set up MSYS2
+      # Key on both root CMakeLists AND cmake/dependencies so dep version
+      # bumps correctly invalidate the cache.
+      - name: Cache build
+        uses: actions/cache@v4
+        with:
+          path: build
+          key: openrv-${{ runner.os }}-${{ hashFiles('CMakeLists.txt', 'cmake/dependencies/**') }}
+          restore-keys: |
+            openrv-${{ runner.os }}-
+
+      # v143 is the toolset that ships with windows-2022 (VS 2022).
+      # v142 (VS 2019) can work too but requires the optional component
+      # to be installed on the runner — risky to rely on.
+      - name: Setup MSVC
+        uses: ilammy/msvc-dev-cmd@v1
+
+      - name: Setup Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: ${{ env.PYTHON_VERSION }}
+
+      - name: Fix Windows TEMP
+        shell: powershell
+        run: |
+          New-Item -ItemType Directory -Force -Path C:\temp
+          echo "TEMP=C:\temp" >> $env:GITHUB_ENV
+          echo "TMP=C:\temp" >> $env:GITHUB_ENV
+
+      - name: Install build tools
+        shell: powershell
+        run: |
+          # Pin cmake to 3.31.7 — CMake 4 breaks the OpenRV dep builds.
+          # 3.27 is too old; some deps now require 3.28+.
+          choco install strawberryperl nasm pkgconfiglite jom -y
+          choco install winflexbison -y
+          choco install cmake --version=3.31.7 --installargs 'ADD_CMAKE_TO_PATH=System' -y
+
+          python -m pip install --upgrade pip
+          pip install pyyaml requests wheel numpy
+          pip install meson ninja
+
+          echo "C:\ProgramData\chocolatey\bin" >> $env:GITHUB_PATH
+
+      - name: Fix flex and bison
+        shell: powershell
+        run: |
+          $bin = "C:\ProgramData\chocolatey\bin"
+          # winflexbison installs as win_flex.exe / win_bison.exe.
+          # Fail loudly if the source file isn't there rather than
+          # silently producing a missing flex/bison later.
+          Copy-Item "$bin\win_flex.exe"  "$bin\flex.exe"  -Force -ErrorAction Stop
+          Copy-Item "$bin\win_bison.exe" "$bin\bison.exe" -Force -ErrorAction Stop
+
+      - name: Install Qt
+        uses: jurplel/install-qt-action@v4
+        with:
+          version: ${{ env.QT_VERSION }}
+          arch: win64_msvc2019_64
+          modules: qtwebengine
+          dir: C:\Qt
+
+      - name: Fix Qt layout
+        shell: powershell
+        run: |
+          # jurplel/install-qt-action nests under Qt\ on some versions.
+          # Only copy if the expected path is missing; fail if neither exists.
+          if (!(Test-Path "C:\Qt\5.15.2")) {
+            if (!(Test-Path "C:\Qt\Qt\5.15.2")) {
+              throw "Qt not found in either C:\Qt\5.15.2 or C:\Qt\Qt\5.15.2"
+            }
+            Copy-Item -Recurse "C:\Qt\Qt\5.15.2" "C:\Qt\5.15.2"
+          }
+          New-Item -ItemType Directory -Force -Path C:\Qt\5.15.2\msvc2019_64\translations
+          New-Item -ItemType Directory -Force -Path C:\Qt\5.15.2\msvc2019_64\resources
+
+      - name: Setup MSYS2 tools
         uses: msys2/setup-msys2@v2
         with:
           msystem: MINGW64
           update: true
-          install: >-
+          install: >
             autoconf
             automake
+            libtool
+            pkgconf
+            meson
+            ninja
             bison
             flex
             git
-            libtool
             nasm
             p7zip
             patch
             unzip
             zip
-            mingw-w64-x86_64-cmake
-            mingw-w64-x86_64-python-pip
-            mingw-w64-x86_64-python-psutil
+            gperf
+            mingw-w64-x86_64-toolchain
+            mingw-w64-x86_64-meson
+            mingw-w64-x86_64-libarchive
+            mingw-w64-x86_64-glew
 
-      # ── 3. Strawberry Perl (required for OpenSSL build step) ─────────────
-      - name: Install Strawberry Perl
-        shell: pwsh
+      - name: Inject MSYS2 into Global PATH
+        shell: powershell
         run: |
-          choco install strawberryperl --yes --no-progress
-          echo "C:\Strawberry\perl\bin" | Out-File -FilePath $env:GITHUB_PATH `
-            -Encoding utf8 -Append
+          echo "C:\msys64\usr\bin"    >> $env:GITHUB_PATH
+          echo "C:\msys64\mingw64\bin" >> $env:GITHUB_PATH
 
-      # ── 4. CMake 3.31.7  (CMake 4 breaks the build) ──────────────────────
-      #    Installs the native Windows cmake used by the VS generator.
-      - name: Install CMake 3.31.7 (native Windows)
-        shell: pwsh
+      - name: Configure OpenRV
+        shell: bash
         run: |
-          $url = "https://github.com/Kitware/CMake/releases/download/v3.31.7/cmake-3.31.7-windows-x86_64.msi"
-          Invoke-WebRequest $url -OutFile cmake-installer.msi
-          Start-Process msiexec -ArgumentList "/i cmake-installer.msi /quiet /norestart ADD_CMAKE_TO_PATH=System" -Wait
-          cmake --version
+          set -e
+          export QT_HOME="C:/Qt/5.15.2/msvc2019_64"
 
-      # ── 5. Qt 6.5.3 via aqtinstall ───────────────────────────────────────
-      - name: Cache Qt
-        id: cache-qt
-        uses: actions/cache@v4
-        with:
-          path: C:\Qt
-          key: qt-6.5.3-windows-msvc2019_64
-
-      - name: Install Qt 6.5.3
-        if: steps.cache-qt.outputs.cache-hit != 'true'
-        run: |
-          pip install aqtinstall
-          aqt install-qt windows desktop 6.5.3 win64_msvc2019_64 \
-            -m qtwebengine qtwebsockets qtmultimedia qtmultimediawidgets \
-            --outputdir /c/Qt
-
-      # ── 6. ccache ────────────────────────────────────────────────────────
-      - name: Cache ccache
-        uses: actions/cache@v4
-        with:
-          path: C:\Users\runneradmin\.ccache
-          key: ccache-windows-${{ github.sha }}
-          restore-keys: |
-            ccache-windows-
-
-      # ── 7. Cache third-party dependency builds ───────────────────────────
-      #    Boost, OpenEXR, OCIO, Python, PySide2 etc. only rebuild when a
-      #    version in cmake/dependencies/ changes.
-      - name: Cache OpenRV third-party dependencies
-        uses: actions/cache@v4
-        with:
-          path: _build\_deps
-          key: openrv-deps-windows-${{ hashFiles('cmake/dependencies/**') }}
-          restore-keys: |
-            openrv-deps-windows-
-
-      # ── 8. Configure ─────────────────────────────────────────────────────
-      - name: Configure (cmake)
-        run: |
-          cmake -B _build \
+          cmake -B build \
             -G "Visual Studio 17 2022" \
             -A x64 \
             -DCMAKE_BUILD_TYPE=Release \
-            -DRV_DEPS_WIN_PERL_ROOT=/c/Strawberry/perl/bin \
-            -DRV_DEPS_QT6_LOCATION=/c/Qt/6.5.3/msvc2019_64
-        env:
-          PATH: /c/Program Files/CMake/bin:$PATH
+            -DCMAKE_PREFIX_PATH="$QT_HOME" \
+            -DRV_DEPS_QT_LOCATION="$QT_HOME" \
+            -DRV_DEPS_WIN_PERL_ROOT="C:/Strawberry/perl/bin"
 
-      # ── 9. Build ─────────────────────────────────────────────────────────
-      - name: Build
+      - name: Build OpenRV
+        shell: bash
         run: |
-          cmake --build _build \
-            --config Release \
-            --target main_executable \
-            --parallel
+          set -e
+          # Use all available cores rather than a hardcoded 4.
+          cmake --build build --config Release --parallel $(nproc)
 
-      # ── 10. Install ──────────────────────────────────────────────────────
-      - name: Install to _install/
+      - name: Install OpenRV
+        shell: bash
         run: |
-          cmake --install _build --config Release
+          set -e
+          cmake --install build --config Release --prefix install
 
-      # ── 11. Upload artifact ──────────────────────────────────────────────
-      - name: Upload build artifact
-        if: success()
+      - name: Upload artifact
         uses: actions/upload-artifact@v4
         with:
-          name: openrv-windows-${{ github.sha }}
-          path: _install\
-          retention-days: 14
-
+          name: OpenRV-Windows
+          path: install
