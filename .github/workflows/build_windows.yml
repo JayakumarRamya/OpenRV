@@ -22,8 +22,6 @@ jobs:
         with:
           submodules: recursive
 
-      # Key on both root CMakeLists AND cmake/dependencies so dep version
-      # bumps correctly invalidate the cache.
       - name: Cache build
         uses: actions/cache@v4
         with:
@@ -32,11 +30,12 @@ jobs:
           restore-keys: |
             openrv-${{ runner.os }}-
 
-      # v143 is the toolset that ships with windows-2022 (VS 2022).
-      # v142 (VS 2019) can work too but requires the optional component
-      # to be installed on the runner — risky to rely on.
+      # FIX 2: Pin MSVC to 14.40 — PySide2/shiboken breaks on 14.41+
+      # (runner currently ships 14.44 which causes the tuple static_assert error)
       - name: Setup MSVC
         uses: ilammy/msvc-dev-cmd@v1
+        with:
+          toolset: 14.40
 
       - name: Setup Python
         uses: actions/setup-python@v5
@@ -50,53 +49,8 @@ jobs:
           echo "TEMP=C:\temp" >> $env:GITHUB_ENV
           echo "TMP=C:\temp" >> $env:GITHUB_ENV
 
-      - name: Install build tools
-        shell: powershell
-        run: |
-          # Pin cmake to 3.31.7 — CMake 4 breaks the OpenRV dep builds.
-          # 3.27 is too old; some deps now require 3.28+.
-          choco install strawberryperl nasm pkgconfiglite jom -y
-          choco install winflexbison -y
-          choco install cmake --version=3.31.7 --installargs 'ADD_CMAKE_TO_PATH=System' -y
-
-          python -m pip install --upgrade pip
-          pip install pyyaml requests wheel numpy
-          pip install meson ninja
-
-          echo "C:\ProgramData\chocolatey\bin" >> $env:GITHUB_PATH
-
-      - name: Fix flex and bison
-        shell: powershell
-        run: |
-          $bin = "C:\ProgramData\chocolatey\bin"
-          # winflexbison installs as win_flex.exe / win_bison.exe.
-          # Fail loudly if the source file isn't there rather than
-          # silently producing a missing flex/bison later.
-          Copy-Item "$bin\win_flex.exe"  "$bin\flex.exe"  -Force -ErrorAction Stop
-          Copy-Item "$bin\win_bison.exe" "$bin\bison.exe" -Force -ErrorAction Stop
-
-      - name: Install Qt
-        uses: jurplel/install-qt-action@v4
-        with:
-          version: ${{ env.QT_VERSION }}
-          arch: win64_msvc2019_64
-          modules: qtwebengine
-          dir: C:\Qt
-
-      - name: Fix Qt layout
-        shell: powershell
-        run: |
-          # jurplel/install-qt-action nests under Qt\ on some versions.
-          # Only copy if the expected path is missing; fail if neither exists.
-          if (!(Test-Path "C:\Qt\5.15.2")) {
-            if (!(Test-Path "C:\Qt\Qt\5.15.2")) {
-              throw "Qt not found in either C:\Qt\5.15.2 or C:\Qt\Qt\5.15.2"
-            }
-            Copy-Item -Recurse "C:\Qt\Qt\5.15.2" "C:\Qt\5.15.2"
-          }
-          New-Item -ItemType Directory -Force -Path C:\Qt\5.15.2\msvc2019_64\translations
-          New-Item -ItemType Directory -Force -Path C:\Qt\5.15.2\msvc2019_64\resources
-
+      # FIX 1a: Move MSYS2 setup BEFORE build tools so autoreconf (needed by
+      # RV_DEPS_ATOMIC_OPS) is on PATH when MSBuild subprocesses run.
       - name: Setup MSYS2 tools
         uses: msys2/setup-msys2@v2
         with:
@@ -123,11 +77,59 @@ jobs:
             mingw-w64-x86_64-libarchive
             mingw-w64-x86_64-glew
 
+      # FIX 1b: Inject MSYS2 paths into global PATH early so MSBuild
+      # subprocesses (dav1d meson, atomic_ops autoreconf) can find these tools.
       - name: Inject MSYS2 into Global PATH
         shell: powershell
         run: |
-          echo "C:\msys64\usr\bin"    >> $env:GITHUB_PATH
+          echo "C:\msys64\usr\bin"     >> $env:GITHUB_PATH
           echo "C:\msys64\mingw64\bin" >> $env:GITHUB_PATH
+
+      - name: Install build tools
+        shell: powershell
+        run: |
+          choco install strawberryperl pkgconfiglite jom -y
+          choco install winflexbison -y
+          # nasm via choco installs to C:\Program Files\NASM — needed by
+          # dav1d's meson build which runs as an MSBuild subprocess.
+          choco install nasm -y
+          choco install cmake --version=3.31.7 --installargs 'ADD_CMAKE_TO_PATH=System' -y
+
+          python -m pip install --upgrade pip
+          pip install pyyaml requests wheel numpy meson ninja
+
+          # FIX 1c: Add nasm and choco bin to global PATH explicitly so
+          # MSBuild subprocesses inherit them (not just the current shell).
+          echo "C:\Program Files\NASM"          >> $env:GITHUB_PATH
+          echo "C:\ProgramData\chocolatey\bin"  >> $env:GITHUB_PATH
+          echo "C:\Strawberry\perl\bin"         >> $env:GITHUB_PATH
+
+      - name: Fix flex and bison
+        shell: powershell
+        run: |
+          $bin = "C:\ProgramData\chocolatey\bin"
+          Copy-Item "$bin\win_flex.exe"  "$bin\flex.exe"  -Force -ErrorAction Stop
+          Copy-Item "$bin\win_bison.exe" "$bin\bison.exe" -Force -ErrorAction Stop
+
+      - name: Install Qt
+        uses: jurplel/install-qt-action@v4
+        with:
+          version: ${{ env.QT_VERSION }}
+          arch: win64_msvc2019_64
+          modules: qtwebengine
+          dir: C:\Qt
+
+      - name: Fix Qt layout
+        shell: powershell
+        run: |
+          if (!(Test-Path "C:\Qt\5.15.2")) {
+            if (!(Test-Path "C:\Qt\Qt\5.15.2")) {
+              throw "Qt not found in either C:\Qt\5.15.2 or C:\Qt\Qt\5.15.2"
+            }
+            Copy-Item -Recurse "C:\Qt\Qt\5.15.2" "C:\Qt\5.15.2"
+          }
+          New-Item -ItemType Directory -Force -Path C:\Qt\5.15.2\msvc2019_64\translations
+          New-Item -ItemType Directory -Force -Path C:\Qt\5.15.2\msvc2019_64\resources
 
       - name: Configure OpenRV
         shell: bash
@@ -138,6 +140,7 @@ jobs:
           cmake -B build \
             -G "Visual Studio 17 2022" \
             -A x64 \
+            -T version=14.40 \
             -DCMAKE_BUILD_TYPE=Release \
             -DCMAKE_PREFIX_PATH="$QT_HOME" \
             -DRV_DEPS_QT_LOCATION="$QT_HOME" \
@@ -147,7 +150,6 @@ jobs:
         shell: bash
         run: |
           set -e
-          # Use all available cores rather than a hardcoded 4.
           cmake --build build --config Release --parallel $(nproc)
 
       - name: Install OpenRV
