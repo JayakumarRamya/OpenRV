@@ -56,8 +56,6 @@ jobs:
           pip install pyyaml requests wheel numpy
           pip install meson ninja
 
-          echo "C:\ProgramData\chocolatey\bin" >> $env:GITHUB_PATH
-
       - name: Fix flex and bison
         shell: powershell
         run: |
@@ -113,16 +111,22 @@ jobs:
             mingw-w64-x86_64-libarchive
             mingw-w64-x86_64-glew
 
+      - name: Inject Global Paths
+        shell: powershell
+        run: |
+          # This forces all essential bin directories into the runner's root environment
+          # so MSBuild and cmd.exe are guaranteed to find them.
+          Add-Content -Path $env:GITHUB_PATH -Value "C:\msys64\usr\bin"
+          Add-Content -Path $env:GITHUB_PATH -Value "C:\msys64\mingw64\bin"
+          Add-Content -Path $env:GITHUB_PATH -Value "C:\ProgramData\chocolatey\bin"
+          Add-Content -Path $env:GITHUB_PATH -Value "C:\Strawberry\perl\bin"
+
       - name: Configure OpenRV
         shell: bash
         run: |
           set -e
 
-          # Force the paths into the Bash environment directly for the configure step
-          echo 'export PATH="/c/msys64/usr/bin:/c/msys64/mingw64/bin:$PATH"' >> ~/.bash_profile
-          source ~/.bash_profile
-
-          export QT_HOME="/c/Qt/5.15.2/msvc2019_64"
+          export QT_HOME="C:/Qt/5.15.2/msvc2019_64"
 
           cmake -B build \
             -G "Visual Studio 17 2022" \
@@ -137,26 +141,18 @@ jobs:
             -DRV_BUILD_DOCS=OFF \
             -DCMAKE_PREFIX_PATH=$QT_HOME \
             -DRV_DEPS_QT_LOCATION=$QT_HOME \
-            -DRV_DEPS_WIN_PERL_ROOT=/c/Strawberry/perl/bin
+            -DRV_DEPS_WIN_PERL_ROOT="C:/Strawberry/perl/bin"
 
       - name: Build OpenRV
         shell: bash
         run: |
           set -e
-          
-          # Ensure the build step also loads the MSYS2 paths
-          source ~/.bash_profile || true
-          
           cmake --build build --config Release --parallel 4
 
       - name: Install OpenRV
         shell: bash
         run: |
           set -e
-          
-          # Ensure the install step also loads the MSYS2 paths
-          source ~/.bash_profile || true
-          
           cmake --install build --config Release --prefix install
 
       - name: Upload artifact
