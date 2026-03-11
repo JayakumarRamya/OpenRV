@@ -18,21 +18,54 @@ jobs:
         run: git config --system core.longpaths true
 
       - name: Checkout OpenRV
+        # Per official docs, clone into the root of a drive.
+        # Long paths in the build dir cause PySide2 failures.
         uses: actions/checkout@v4
         with:
           submodules: recursive
+          path: C:\OpenRV
 
       - name: Cache build
         uses: actions/cache@v4
         with:
-          path: build
-          key: openrv-${{ runner.os }}-${{ hashFiles('CMakeLists.txt', 'cmake/dependencies/**') }}
+          path: C:\OpenRV\build
+          key: openrv-${{ runner.os }}-${{ hashFiles('C:/OpenRV/CMakeLists.txt', 'C:/OpenRV/cmake/dependencies/**') }}
           restore-keys: |
             openrv-${{ runner.os }}-
 
-      # FIX 2: Pin MSVC to 14.40 — PySide2/shiboken breaks on 14.41+
-      # (runner currently ships 14.44 which causes the tuple static_assert error)
-      - name: Setup MSVC
+      # ── MSVC TOOLSET INSTALL ─────────────────────────────────────────────
+      # The windows-2022 runner ships MSVC 14.44 which breaks PySide2/shiboken.
+      # Official OpenRV docs require:
+      #   - MSVC v143 14.40.x  → for OpenRV itself
+      #   - MSVC v143 14.39.x  → for Boost
+      # Both must be installed before configure.
+      - name: Install required MSVC toolsets (14.39 + 14.40)
+        shell: powershell
+        run: |
+          $vsInstaller = "C:\Program Files (x86)\Microsoft Visual Studio\Installer\vs_installer.exe"
+          $vsWhere     = "C:\Program Files (x86)\Microsoft Visual Studio\Installer\vswhere.exe"
+          $installPath = & $vsWhere -latest -property installationPath
+
+          Write-Host "VS install path: $installPath"
+
+          # Install MSVC v143 14.39 (needed for Boost)
+          & $vsInstaller modify `
+            --installPath "$installPath" `
+            --add Microsoft.VisualStudio.Component.VC.14.39.17.9.x86.x64 `
+            --quiet --norestart --force
+          if ($LASTEXITCODE -ne 0) { throw "Failed to install MSVC 14.39" }
+
+          # Install MSVC v143 14.40 (needed for OpenRV / PySide2)
+          & $vsInstaller modify `
+            --installPath "$installPath" `
+            --add Microsoft.VisualStudio.Component.VC.14.40.17.10.x86.x64 `
+            --quiet --norestart --force
+          if ($LASTEXITCODE -ne 0) { throw "Failed to install MSVC 14.40" }
+
+          Write-Host "Toolset installation complete."
+
+      # Set MSVC environment to 14.40 (for OpenRV and PySide2)
+      - name: Setup MSVC 14.40 environment
         uses: ilammy/msvc-dev-cmd@v1
         with:
           toolset: 14.40
@@ -47,10 +80,10 @@ jobs:
         run: |
           New-Item -ItemType Directory -Force -Path C:\temp
           echo "TEMP=C:\temp" >> $env:GITHUB_ENV
-          echo "TMP=C:\temp" >> $env:GITHUB_ENV
+          echo "TMP=C:\temp"  >> $env:GITHUB_ENV
 
-      # FIX 1a: Move MSYS2 setup BEFORE build tools so autoreconf (needed by
-      # RV_DEPS_ATOMIC_OPS) is on PATH when MSBuild subprocesses run.
+      # MSYS2 setup moved BEFORE build tools so autoreconf/gperf are on PATH
+      # before MSBuild subprocesses (atomic_ops, dav1d) need them.
       - name: Setup MSYS2 tools
         uses: msys2/setup-msys2@v2
         with:
@@ -77,8 +110,7 @@ jobs:
             mingw-w64-x86_64-libarchive
             mingw-w64-x86_64-glew
 
-      # FIX 1b: Inject MSYS2 paths into global PATH early so MSBuild
-      # subprocesses (dav1d meson, atomic_ops autoreconf) can find these tools.
+      # Inject MSYS2 paths early so MSBuild subprocesses inherit them.
       - name: Inject MSYS2 into Global PATH
         shell: powershell
         run: |
@@ -88,21 +120,19 @@ jobs:
       - name: Install build tools
         shell: powershell
         run: |
-          choco install strawberryperl pkgconfiglite jom -y
-          choco install winflexbison -y
-          # nasm via choco installs to C:\Program Files\NASM — needed by
-          # dav1d's meson build which runs as an MSBuild subprocess.
+          choco install strawberryperl pkgconfiglite jom winflexbison -y
+          # nasm via choco: installs to C:\Program Files\NASM
+          # This is the Windows-native binary dav1d's meson needs.
           choco install nasm -y
           choco install cmake --version=3.31.7 --installargs 'ADD_CMAKE_TO_PATH=System' -y
 
           python -m pip install --upgrade pip
           pip install pyyaml requests wheel numpy meson ninja
 
-          # FIX 1c: Add nasm and choco bin to global PATH explicitly so
-          # MSBuild subprocesses inherit them (not just the current shell).
-          echo "C:\Program Files\NASM"          >> $env:GITHUB_PATH
-          echo "C:\ProgramData\chocolatey\bin"  >> $env:GITHUB_PATH
-          echo "C:\Strawberry\perl\bin"         >> $env:GITHUB_PATH
+          # Add nasm and choco bin to GITHUB_PATH so MSBuild subprocesses
+          # can find them (not just the current shell).
+          echo "C:\Program Files\NASM"         >> $env:GITHUB_PATH
+          echo "C:\ProgramData\chocolatey\bin" >> $env:GITHUB_PATH
 
       - name: Fix flex and bison
         shell: powershell
@@ -124,15 +154,26 @@ jobs:
         run: |
           if (!(Test-Path "C:\Qt\5.15.2")) {
             if (!(Test-Path "C:\Qt\Qt\5.15.2")) {
-              throw "Qt not found in either C:\Qt\5.15.2 or C:\Qt\Qt\5.15.2"
+              throw "Qt not found in C:\Qt\5.15.2 or C:\Qt\Qt\5.15.2"
             }
             Copy-Item -Recurse "C:\Qt\Qt\5.15.2" "C:\Qt\5.15.2"
           }
           New-Item -ItemType Directory -Force -Path C:\Qt\5.15.2\msvc2019_64\translations
           New-Item -ItemType Directory -Force -Path C:\Qt\5.15.2\msvc2019_64\resources
 
+      # Verify nasm is visible to MSBuild before the build starts
+      - name: Verify tool availability
+        shell: powershell
+        run: |
+          Write-Host "=== nasm ===" ; where.exe nasm
+          Write-Host "=== cmake ===" ; cmake --version
+          Write-Host "=== perl ===" ; perl --version | Select-Object -First 1
+          Write-Host "=== flex ===" ; where.exe flex
+          Write-Host "=== bison ===" ; where.exe bison
+
       - name: Configure OpenRV
         shell: bash
+        working-directory: C:/OpenRV
         run: |
           set -e
           export QT_HOME="C:/Qt/5.15.2/msvc2019_64"
@@ -148,12 +189,14 @@ jobs:
 
       - name: Build OpenRV
         shell: bash
+        working-directory: C:/OpenRV
         run: |
           set -e
           cmake --build build --config Release --parallel $(nproc)
 
       - name: Install OpenRV
         shell: bash
+        working-directory: C:/OpenRV
         run: |
           set -e
           cmake --install build --config Release --prefix install
@@ -162,4 +205,4 @@ jobs:
         uses: actions/upload-artifact@v4
         with:
           name: OpenRV-Windows
-          path: install
+          path: C:\OpenRV\install
