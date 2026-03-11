@@ -92,7 +92,6 @@ jobs:
         with:
           msystem: MINGW64
           update: true
-          # Added gperf, which is required by QtWebEngine
           install: >
             autoconf
             automake
@@ -114,20 +113,16 @@ jobs:
             mingw-w64-x86_64-libarchive
             mingw-w64-x86_64-glew
 
-      - name: Inject MSYS2 into Global PATH
-        shell: powershell
-        run: |
-          # Changed to Windows path format so MSBuild can read it
-          echo "C:\msys64\usr\bin" >> $env:GITHUB_PATH
-          echo "C:\msys64\mingw64\bin" >> $env:GITHUB_PATH
-
       - name: Configure OpenRV
         shell: bash
         run: |
           set -e
 
-          # Changed to a Windows-friendly path format
-          export QT_HOME="C:/Qt/5.15.2/msvc2019_64"
+          # Force the paths into the Bash environment directly for the configure step
+          echo 'export PATH="/c/msys64/usr/bin:/c/msys64/mingw64/bin:$PATH"' >> ~/.bash_profile
+          source ~/.bash_profile
+
+          export QT_HOME="/c/Qt/5.15.2/msvc2019_64"
 
           cmake -B build \
             -G "Visual Studio 17 2022" \
@@ -148,12 +143,20 @@ jobs:
         shell: bash
         run: |
           set -e
+          
+          # Ensure the build step also loads the MSYS2 paths
+          source ~/.bash_profile || true
+          
           cmake --build build --config Release --parallel 4
 
       - name: Install OpenRV
         shell: bash
         run: |
           set -e
+          
+          # Ensure the install step also loads the MSYS2 paths
+          source ~/.bash_profile || true
+          
           cmake --install build --config Release --prefix install
 
       - name: Upload artifact
