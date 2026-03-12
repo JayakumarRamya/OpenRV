@@ -111,6 +111,7 @@ jobs:
       - name: Inject Global Paths
         shell: powershell
         run: |
+          Add-Content -Path $env:GITHUB_PATH -Value "C:\Program Files\Git\cmd"
           Add-Content -Path $env:GITHUB_PATH -Value "C:\Program Files\CMake\bin"
           Add-Content -Path $env:GITHUB_PATH -Value "C:\msys64\usr\bin"
           Add-Content -Path $env:GITHUB_PATH -Value "C:\msys64\mingw64\bin"
@@ -122,6 +123,8 @@ jobs:
         run: |
           echo "--- PATH ---"
           echo "$PATH"
+          echo "--- git ---"
+          git --version || echo "git NOT FOUND"
           echo "--- cmake ---"
           cmake --version || echo "cmake NOT FOUND"
           echo "--- nasm ---"
@@ -134,7 +137,7 @@ jobs:
       - name: Configure OpenRV
         shell: bash
         env:
-          PATH: "/c/Program Files/CMake/bin:/c/msys64/usr/bin:/c/msys64/mingw64/bin:/c/ProgramData/chocolatey/bin:/c/Strawberry/perl/bin:$PATH"
+          PATH: "/c/Program Files/Git/cmd:/c/Program Files/CMake/bin:/c/msys64/usr/bin:/c/msys64/mingw64/bin:/c/ProgramData/chocolatey/bin:/c/Strawberry/perl/bin:$PATH"
         run: |
           set -e
 
@@ -155,12 +158,12 @@ jobs:
             -DCMAKE_PREFIX_PATH="$QT_HOME" \
             -DRV_DEPS_QT_LOCATION="$QT_HOME" \
             -DRV_DEPS_WIN_PERL_ROOT="C:/Strawberry/perl/bin" \
-            -DCMAKE_PROGRAM_PATH="C:/Program Files/CMake/bin;C:/msys64/usr/bin;C:/msys64/mingw64/bin;C:/ProgramData/chocolatey/bin"
+            -DCMAKE_PROGRAM_PATH="C:/Program Files/Git/cmd;C:/Program Files/CMake/bin;C:/msys64/usr/bin;C:/msys64/mingw64/bin;C:/ProgramData/chocolatey/bin"
 
       - name: Build OpenRV
         shell: bash
         env:
-          PATH: "/c/Program Files/CMake/bin:/c/msys64/usr/bin:/c/msys64/mingw64/bin:/c/ProgramData/chocolatey/bin:/c/Strawberry/perl/bin:$PATH"
+          PATH: "/c/Program Files/Git/cmd:/c/Program Files/CMake/bin:/c/msys64/usr/bin:/c/msys64/mingw64/bin:/c/ProgramData/chocolatey/bin:/c/Strawberry/perl/bin:$PATH"
         run: |
           set -e
           cmake --build build --config Release --parallel 4
@@ -168,7 +171,7 @@ jobs:
       - name: Install OpenRV
         shell: bash
         env:
-          PATH: "/c/Program Files/CMake/bin:$PATH"
+          PATH: "/c/Program Files/Git/cmd:/c/Program Files/CMake/bin:$PATH"
         run: |
           set -e
           cmake --install build --config Release --prefix install
