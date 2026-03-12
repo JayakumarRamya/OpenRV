@@ -48,7 +48,8 @@ jobs:
       - name: Install build tools
         shell: powershell
         run: |
-          choco install strawberryperl nasm pkgconfiglite jom -y
+          # Added llvm here so Shiboken can parse QtWebEngine C++ headers
+          choco install strawberryperl nasm pkgconfiglite jom llvm -y
           choco install winflexbison -y
           choco install cmake --version=3.27.9 -y
 
@@ -60,9 +61,11 @@ jobs:
         shell: powershell
         run: |
           $bin="C:\ProgramData\chocolatey\bin"
-          if (Test-Path "$bin\winflex.exe")   { Copy-Item "$bin\winflex.exe"   "$bin\flex.exe"  -Force }
-          if (Test-Path "$bin\win_flex.exe")  { Copy-Item "$bin\win_flex.exe"  "$bin\flex.exe"  -Force }
-          if (Test-Path "$bin\winbison.exe")  { Copy-Item "$bin\winbison.exe"  "$bin\bison.exe" -Force }
+
+          if (Test-Path "$bin\winflex.exe") { Copy-Item "$bin\winflex.exe" "$bin\flex.exe" -Force }
+          if (Test-Path "$bin\win_flex.exe") { Copy-Item "$bin\win_flex.exe" "$bin\flex.exe" -Force }
+
+          if (Test-Path "$bin\winbison.exe") { Copy-Item "$bin\winbison.exe" "$bin\bison.exe" -Force }
           if (Test-Path "$bin\win_bison.exe") { Copy-Item "$bin\win_bison.exe" "$bin\bison.exe" -Force }
 
       - name: Install Qt
@@ -79,6 +82,7 @@ jobs:
           if (!(Test-Path "C:\Qt\5.15.2")) {
             Copy-Item -Recurse "C:\Qt\Qt\5.15.2" "C:\Qt\5.15.2"
           }
+
           New-Item -ItemType Directory -Force -Path C:\Qt\5.15.2\msvc2019_64\translations
           New-Item -ItemType Directory -Force -Path C:\Qt\5.15.2\msvc2019_64\resources
 
@@ -108,101 +112,49 @@ jobs:
             mingw-w64-x86_64-libarchive
             mingw-w64-x86_64-glew
 
-      - name: Inject Global Paths
+      - name: Force MSYS2 Tools to Front of PATH
         shell: powershell
         run: |
-          Add-Content -Path $env:GITHUB_PATH -Value "C:\Program Files\Git\cmd"
-          Add-Content -Path $env:GITHUB_PATH -Value "C:\Program Files\CMake\bin"
-          Add-Content -Path $env:GITHUB_PATH -Value "C:\msys64\usr\bin"
-          Add-Content -Path $env:GITHUB_PATH -Value "C:\msys64\mingw64\bin"
-          Add-Content -Path $env:GITHUB_PATH -Value "C:\ProgramData\chocolatey\bin"
-          Add-Content -Path $env:GITHUB_PATH -Value "C:\Strawberry\perl\bin"
-
-      - name: Verify tools are reachable
-        shell: powershell
-        run: |
-          $toolPaths = @(
-            "C:\Program Files\Git\cmd",
-            "C:\Program Files\CMake\bin",
-            "C:\msys64\usr\bin",
-            "C:\msys64\mingw64\bin",
-            "C:\ProgramData\chocolatey\bin",
-            "C:\Strawberry\perl\bin"
-          )
-          $env:PATH = ($toolPaths -join ";") + ";" + $env:PATH
-
-          Write-Host "--- git ---"
-          git --version
-          Write-Host "--- cmake ---"
-          cmake --version
-          Write-Host "--- nasm ---"
-          nasm --version
-          Write-Host "--- autoconf ---"
-          autoconf --version
-          Write-Host "--- libtoolize ---"
-          libtoolize --version
-          Write-Host "--- python ---"
-          python --version
+          # This edits the core Windows Registry to guarantee MSBuild invokes MSYS2 bash, NOT Git Bash
+          $pathsToAdd = "C:\msys64\usr\bin;C:\msys64\mingw64\bin;C:\ProgramData\chocolatey\bin;C:\Strawberry\perl\bin"
+          $currentPath = [Environment]::GetEnvironmentVariable("PATH", "Machine")
+          [Environment]::SetEnvironmentVariable("PATH", "$pathsToAdd;$currentPath", "Machine")
+          
+          # Also feed it into GITHUB_PATH for good measure
+          echo "C:\Strawberry\perl\bin" >> $env:GITHUB_PATH
+          echo "C:\ProgramData\chocolatey\bin" >> $env:GITHUB_PATH
+          echo "C:\msys64\mingw64\bin" >> $env:GITHUB_PATH
+          echo "C:\msys64\usr\bin" >> $env:GITHUB_PATH
 
       - name: Configure OpenRV
-        shell: powershell
+        shell: bash
         run: |
-          # Set PATH for this process AND all child processes (MSBuild, meson, etc.)
-          $extraPaths = @(
-            "C:\Program Files\Git\cmd",
-            "C:\Program Files\CMake\bin",
-            "C:\msys64\usr\bin",
-            "C:\msys64\mingw64\bin",
-            "C:\ProgramData\chocolatey\bin",
-            "C:\Strawberry\perl\bin"
-          )
-          $env:PATH = ($extraPaths -join ";") + ";" + $env:PATH
+          set -e
 
-          $QT_HOME = "C:/Qt/5.15.2/msvc2019_64"
+          export QT_HOME="C:/Qt/5.15.2/msvc2019_64"
 
-          cmake -B build `
-            -G "Visual Studio 17 2022" `
-            -T v142 `
-            -A x64 `
-            -DCMAKE_BUILD_TYPE=Release `
-            -DCMAKE_POLICY_VERSION_MINIMUM=3.5 `
-            -DCMAKE_POLICY_DEFAULT_CMP0148=OLD `
-            -DRV_BUILD_PYSIDE=OFF `
-            -DRV_DEPS_PYSIDE2_BUILD=OFF `
-            -DRV_DEPS_PYSIDE2_DISABLE=ON `
-            -DRV_DEPS_PYTHON_BUILD=OFF `
-            -DRV_BUILD_DOCS=OFF `
-            -DCMAKE_PREFIX_PATH="$QT_HOME" `
-            -DRV_DEPS_QT_LOCATION="$QT_HOME" `
-            -DRV_DEPS_WIN_PERL_ROOT="C:/Strawberry/perl/bin" `
-            -DCMAKE_PROGRAM_PATH="C:/Program Files/Git/cmd;C:/Program Files/CMake/bin;C:/msys64/usr/bin;C:/msys64/mingw64/bin;C:/ProgramData/chocolatey/bin"
-
-          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+          cmake -B build \
+            -G "Visual Studio 17 2022" \
+            -T v142 \
+            -A x64 \
+            -DCMAKE_BUILD_TYPE=Release \
+            -DCMAKE_POLICY_VERSION_MINIMUM=3.5 \
+            -DCMAKE_POLICY_DEFAULT_CMP0148=OLD \
+            -DCMAKE_PREFIX_PATH=$QT_HOME \
+            -DRV_DEPS_QT_LOCATION=$QT_HOME \
+            -DRV_DEPS_WIN_PERL_ROOT="C:/Strawberry/perl/bin"
 
       - name: Build OpenRV
-        shell: powershell
+        shell: bash
         run: |
-          # Set PATH for this process AND all child processes (MSBuild, meson, etc.)
-          $extraPaths = @(
-            "C:\Program Files\Git\cmd",
-            "C:\Program Files\CMake\bin",
-            "C:\msys64\usr\bin",
-            "C:\msys64\mingw64\bin",
-            "C:\ProgramData\chocolatey\bin",
-            "C:\Strawberry\perl\bin"
-          )
-          $env:PATH = ($extraPaths -join ";") + ";" + $env:PATH
-
+          set -e
           cmake --build build --config Release --parallel 4
 
-          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
-
       - name: Install OpenRV
-        shell: powershell
+        shell: bash
         run: |
-          $env:PATH = "C:\Program Files\CMake\bin;" + $env:PATH
+          set -e
           cmake --install build --config Release --prefix install
-          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
 
       - name: Upload artifact
         uses: actions/upload-artifact@v4
