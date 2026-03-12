@@ -48,13 +48,24 @@ jobs:
       - name: Install build tools
         shell: powershell
         run: |
-          # Removed winflexbison from here!
           choco install strawberryperl nasm pkgconfiglite jom llvm ninja -y
+          choco install winflexbison -y
           choco install cmake --version=3.27.9 -y
 
           python -m pip install --upgrade pip
           pip install pyyaml requests wheel numpy
           pip install meson ninja
+
+      - name: Fix flex and bison
+        shell: powershell
+        run: |
+          $bin="C:\ProgramData\chocolatey\bin"
+
+          if (Test-Path "$bin\winflex.exe") { Copy-Item "$bin\winflex.exe" "$bin\flex.exe" -Force }
+          if (Test-Path "$bin\win_flex.exe") { Copy-Item "$bin\win_flex.exe" "$bin\flex.exe" -Force }
+
+          if (Test-Path "$bin\winbison.exe") { Copy-Item "$bin\winbison.exe" "$bin\bison.exe" -Force }
+          if (Test-Path "$bin\win_bison.exe") { Copy-Item "$bin\win_bison.exe" "$bin\bison.exe" -Force }
 
       - name: Install Qt
         uses: jurplel/install-qt-action@v4
@@ -102,6 +113,7 @@ jobs:
             unzip
             zip
             gperf
+            gettext-devel
             mingw-w64-x86_64-toolchain
             mingw-w64-x86_64-meson
             mingw-w64-x86_64-libarchive
@@ -110,6 +122,12 @@ jobs:
       - name: Configure OpenRV
         shell: msys2 {0}
         run: |
+          # 1. Prevent MSYS2 from ruining FFmpeg's regex backslashes
+          export MSYS2_ARG_CONV_EXCL="*"
+          
+          # 2. Format the GitHub Python path so MSYS2 CMake can read it properly
+          WIN_PYTHON_PATH=$(cygpath -m "$pythonLocation/python.exe")
+
           cmake -B build \
             -G "Visual Studio 17 2022" \
             -T v142 \
@@ -123,15 +141,22 @@ jobs:
             -DRV_BUILD_DOCS=OFF \
             -DCMAKE_PREFIX_PATH="C:/Qt/5.15.2/msvc2019_64" \
             -DRV_DEPS_QT_LOCATION="C:/Qt/5.15.2/msvc2019_64" \
-            -DRV_DEPS_WIN_PERL_ROOT="C:/Strawberry/perl/bin"
+            -DRV_DEPS_WIN_PERL_ROOT="C:/Strawberry/perl/bin" \
+            -DPython_EXECUTABLE="$WIN_PYTHON_PATH" \
+            -DPython3_EXECUTABLE="$WIN_PYTHON_PATH"
 
       - name: Build OpenRV
         shell: msys2 {0}
-        run: cmake --build build --config Release --parallel 4
+        run: |
+          # Must re-apply the exclusion flag for the build step!
+          export MSYS2_ARG_CONV_EXCL="*"
+          cmake --build build --config Release --parallel 4
 
       - name: Install OpenRV
         shell: msys2 {0}
-        run: cmake --install build --config Release --prefix install
+        run: |
+          export MSYS2_ARG_CONV_EXCL="*"
+          cmake --install build --config Release --prefix install
 
       - name: Upload artifact
         uses: actions/upload-artifact@v4
