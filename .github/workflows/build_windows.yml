@@ -11,11 +11,9 @@ jobs:
     env:
       QT_VERSION: 5.15.2
       PYTHON_VERSION: "3.10"
-      # This silences the harmless Node.js 20 GitHub warning
       FORCE_JAVASCRIPT_ACTIONS_TO_NODE24: true
 
     steps:
-
       - name: Enable Windows long paths
         run: git config --system core.longpaths true
 
@@ -50,7 +48,7 @@ jobs:
       - name: Install build tools
         shell: powershell
         run: |
-          choco install strawberryperl nasm pkgconfiglite jom llvm -y
+          choco install strawberryperl nasm pkgconfiglite jom llvm ninja -y
           choco install winflexbison -y
           choco install cmake --version=3.27.9 -y
 
@@ -114,47 +112,37 @@ jobs:
             mingw-w64-x86_64-glew
 
       - name: Configure OpenRV
-        shell: powershell
+        shell: cmd
         run: |
-          # 1. Prepend MSYS2 and Tools to front of PATH
-          $env:PATH = "C:\msys64\usr\bin;C:\msys64\mingw64\bin;C:\ProgramData\chocolatey\bin;C:\Strawberry\perl\bin;C:\Program Files\LLVM\bin;" + $env:PATH
-          # 2. Strip Git Bash completely out of the PATH so it can't hijack the build
-          $env:PATH = ($env:PATH -split ';' | Where-Object { $_ -notmatch 'Git\\bin' -and $_ -notmatch 'Git\\usr\\bin' -and $_ -notmatch 'Git\\mingw64\\bin' }) -join ';'
+          :: Setting PATH in cmd guarantees MSYS2 is found first, bypassing Git Bash
+          set PATH=C:\msys64\usr\bin;C:\msys64\mingw64\bin;C:\ProgramData\chocolatey\bin;C:\Strawberry\perl\bin;%PATH%
           
-          $env:QT_HOME = "C:\Qt\5.15.2\msvc2019_64"
-
-          # Restored your original PySide/Python OFF flags here!
-          cmake -B build `
-            -G "Visual Studio 17 2022" `
-            -T v142 `
-            -A x64 `
-            -DCMAKE_BUILD_TYPE=Release `
-            -DCMAKE_POLICY_VERSION_MINIMUM=3.5 `
-            -DCMAKE_POLICY_DEFAULT_CMP0148=OLD `
-            -DRV_BUILD_PYSIDE=OFF `
-            -DRV_DEPS_PYSIDE2_BUILD=OFF `
-            -DRV_DEPS_PYTHON_BUILD=OFF `
-            -DRV_BUILD_DOCS=OFF `
-            -DCMAKE_PREFIX_PATH=$env:QT_HOME `
-            -DRV_DEPS_QT_LOCATION=$env:QT_HOME `
-            -DRV_DEPS_WIN_PERL_ROOT="C:\Strawberry\perl\bin"
+          :: Using ^ for multiline in cmd instead of backticks
+          cmake -B build ^
+            -G "Visual Studio 17 2022" ^
+            -T v142 ^
+            -A x64 ^
+            -DCMAKE_BUILD_TYPE=Release ^
+            -DCMAKE_POLICY_VERSION_MINIMUM=3.5 ^
+            -DCMAKE_POLICY_DEFAULT_CMP0148=OLD ^
+            -DRV_BUILD_PYSIDE=OFF ^
+            -DRV_DEPS_PYSIDE2_BUILD=OFF ^
+            -DRV_DEPS_PYTHON_BUILD=OFF ^
+            -DRV_BUILD_DOCS=OFF ^
+            -DCMAKE_PREFIX_PATH="C:/Qt/5.15.2/msvc2019_64" ^
+            -DRV_DEPS_QT_LOCATION="C:/Qt/5.15.2/msvc2019_64" ^
+            -DRV_DEPS_WIN_PERL_ROOT="C:/Strawberry/perl/bin"
 
       - name: Build OpenRV
-        shell: powershell
+        shell: cmd
         run: |
-          # Re-apply the strict PATH rules for the actual build process
-          $env:PATH = "C:\msys64\usr\bin;C:\msys64\mingw64\bin;C:\ProgramData\chocolatey\bin;C:\Strawberry\perl\bin;C:\Program Files\LLVM\bin;" + $env:PATH
-          $env:PATH = ($env:PATH -split ';' | Where-Object { $_ -notmatch 'Git\\bin' -and $_ -notmatch 'Git\\usr\\bin' -and $_ -notmatch 'Git\\mingw64\\bin' }) -join ';'
-          
+          set PATH=C:\msys64\usr\bin;C:\msys64\mingw64\bin;C:\ProgramData\chocolatey\bin;C:\Strawberry\perl\bin;%PATH%
           cmake --build build --config Release --parallel 4
 
       - name: Install OpenRV
-        shell: powershell
+        shell: cmd
         run: |
-          # Re-apply for the install process
-          $env:PATH = "C:\msys64\usr\bin;C:\msys64\mingw64\bin;C:\ProgramData\chocolatey\bin;C:\Strawberry\perl\bin;C:\Program Files\LLVM\bin;" + $env:PATH
-          $env:PATH = ($env:PATH -split ';' | Where-Object { $_ -notmatch 'Git\\bin' -and $_ -notmatch 'Git\\usr\\bin' -and $_ -notmatch 'Git\\mingw64\\bin' }) -join ';'
-          
+          set PATH=C:\msys64\usr\bin;C:\msys64\mingw64\bin;C:\ProgramData\chocolatey\bin;C:\Strawberry\perl\bin;%PATH%
           cmake --install build --config Release --prefix install
 
       - name: Upload artifact
