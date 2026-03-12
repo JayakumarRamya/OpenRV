@@ -48,24 +48,13 @@ jobs:
       - name: Install build tools
         shell: powershell
         run: |
+          # Removed winflexbison from here!
           choco install strawberryperl nasm pkgconfiglite jom llvm ninja -y
-          choco install winflexbison -y
           choco install cmake --version=3.27.9 -y
 
           python -m pip install --upgrade pip
           pip install pyyaml requests wheel numpy
           pip install meson ninja
-
-      - name: Fix flex and bison
-        shell: powershell
-        run: |
-          $bin="C:\ProgramData\chocolatey\bin"
-
-          if (Test-Path "$bin\winflex.exe") { Copy-Item "$bin\winflex.exe" "$bin\flex.exe" -Force }
-          if (Test-Path "$bin\win_flex.exe") { Copy-Item "$bin\win_flex.exe" "$bin\flex.exe" -Force }
-
-          if (Test-Path "$bin\winbison.exe") { Copy-Item "$bin\winbison.exe" "$bin\bison.exe" -Force }
-          if (Test-Path "$bin\win_bison.exe") { Copy-Item "$bin\win_bison.exe" "$bin\bison.exe" -Force }
 
       - name: Install Qt
         uses: jurplel/install-qt-action@v4
@@ -121,8 +110,6 @@ jobs:
       - name: Configure OpenRV
         shell: msys2 {0}
         run: |
-          # Running natively in MSYS2 prevents Git Bash from breaking the dependencies
-          # Hardcoded Qt path directly eliminates the $env crash
           cmake -B build \
             -G "Visual Studio 17 2022" \
             -T v142 \
