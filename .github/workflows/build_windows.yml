@@ -11,6 +11,8 @@ jobs:
     env:
       QT_VERSION: 5.15.2
       PYTHON_VERSION: "3.10"
+      # Declare the expanded PATH once so both Configure and Build share it
+      RV_BUILD_PATH: "C:/msys64/usr/bin;C:/msys64/mingw64/bin;C:/ProgramData/chocolatey/bin;C:/Strawberry/perl/bin"
 
     steps:
 
@@ -60,12 +62,10 @@ jobs:
         shell: powershell
         run: |
           $bin="C:\ProgramData\chocolatey\bin"
-
-          if (Test-Path "$bin\winflex.exe") { Copy-Item "$bin\winflex.exe" "$bin\flex.exe" -Force }
-          if (Test-Path "$bin\win_flex.exe") { Copy-Item "$bin\win_flex.exe" "$bin\flex.exe" -Force }
-
+          if (Test-Path "$bin\winflex.exe")  { Copy-Item "$bin\winflex.exe"  "$bin\flex.exe"  -Force }
+          if (Test-Path "$bin\win_flex.exe") { Copy-Item "$bin\win_flex.exe" "$bin\flex.exe"  -Force }
           if (Test-Path "$bin\winbison.exe") { Copy-Item "$bin\winbison.exe" "$bin\bison.exe" -Force }
-          if (Test-Path "$bin\win_bison.exe") { Copy-Item "$bin\win_bison.exe" "$bin\bison.exe" -Force }
+          if (Test-Path "$bin\win_bison.exe"){ Copy-Item "$bin\win_bison.exe""$bin\bison.exe" -Force }
 
       - name: Install Qt
         uses: jurplel/install-qt-action@v4
@@ -81,7 +81,6 @@ jobs:
           if (!(Test-Path "C:\Qt\5.15.2")) {
             Copy-Item -Recurse "C:\Qt\Qt\5.15.2" "C:\Qt\5.15.2"
           }
-
           New-Item -ItemType Directory -Force -Path C:\Qt\5.15.2\msvc2019_64\translations
           New-Item -ItemType Directory -Force -Path C:\Qt\5.15.2\msvc2019_64\resources
 
@@ -114,15 +113,28 @@ jobs:
       - name: Inject Global Paths
         shell: powershell
         run: |
-          # This forces all essential bin directories into the runner's root environment
-          # so MSBuild and cmd.exe are guaranteed to find them.
           Add-Content -Path $env:GITHUB_PATH -Value "C:\msys64\usr\bin"
           Add-Content -Path $env:GITHUB_PATH -Value "C:\msys64\mingw64\bin"
           Add-Content -Path $env:GITHUB_PATH -Value "C:\ProgramData\chocolatey\bin"
           Add-Content -Path $env:GITHUB_PATH -Value "C:\Strawberry\perl\bin"
 
+      - name: Verify tools are reachable
+        shell: bash
+        run: |
+          echo "--- PATH ---"
+          echo "$PATH"
+          echo "--- nasm ---"
+          nasm --version || echo "nasm NOT FOUND"
+          echo "--- autoconf ---"
+          autoconf --version || echo "autoconf NOT FOUND"
+          echo "--- libtoolize ---"
+          libtoolize --version || echo "libtoolize NOT FOUND"
+
       - name: Configure OpenRV
         shell: bash
+        # Force MSBuild child processes to also see these dirs via PATH
+        env:
+          PATH: "/c/msys64/usr/bin:/c/msys64/mingw64/bin:/c/ProgramData/chocolatey/bin:/c/Strawberry/perl/bin:$PATH"
         run: |
           set -e
 
@@ -137,14 +149,18 @@ jobs:
             -DCMAKE_POLICY_DEFAULT_CMP0148=OLD \
             -DRV_BUILD_PYSIDE=OFF \
             -DRV_DEPS_PYSIDE2_BUILD=OFF \
+            -DRV_DEPS_PYSIDE2_DISABLE=ON \
             -DRV_DEPS_PYTHON_BUILD=OFF \
             -DRV_BUILD_DOCS=OFF \
-            -DCMAKE_PREFIX_PATH=$QT_HOME \
-            -DRV_DEPS_QT_LOCATION=$QT_HOME \
-            -DRV_DEPS_WIN_PERL_ROOT="C:/Strawberry/perl/bin"
+            -DCMAKE_PREFIX_PATH="$QT_HOME" \
+            -DRV_DEPS_QT_LOCATION="$QT_HOME" \
+            -DRV_DEPS_WIN_PERL_ROOT="C:/Strawberry/perl/bin" \
+            -DCMAKE_PROGRAM_PATH="C:/msys64/usr/bin;C:/msys64/mingw64/bin;C:/ProgramData/chocolatey/bin"
 
       - name: Build OpenRV
         shell: bash
+        env:
+          PATH: "/c/msys64/usr/bin:/c/msys64/mingw64/bin:/c/ProgramData/chocolatey/bin:/c/Strawberry/perl/bin:$PATH"
         run: |
           set -e
           cmake --build build --config Release --parallel 4
