@@ -85,11 +85,18 @@ jobs:
           New-Item -ItemType Directory -Force -Path C:\Qt\5.15.2\msvc2019_64\translations
           New-Item -ItemType Directory -Force -Path C:\Qt\5.15.2\msvc2019_64\resources
 
+      - name: Set Global Paths
+        shell: powershell
+        run: |
+          echo "C:\Strawberry\perl\bin" >> $env:GITHUB_PATH
+          echo "C:\ProgramData\chocolatey\bin" >> $env:GITHUB_PATH
+
       - name: Setup MSYS2 tools
         uses: msys2/setup-msys2@v2
         with:
           msystem: MINGW64
           update: true
+          path-type: inherit
           install: >
             autoconf
             automake
@@ -112,38 +119,32 @@ jobs:
             mingw-w64-x86_64-glew
 
       - name: Configure OpenRV
-        shell: cmd
+        shell: msys2 {0}
         run: |
-          :: Setting PATH in cmd guarantees MSYS2 is found first, bypassing Git Bash
-          set PATH=C:\msys64\usr\bin;C:\msys64\mingw64\bin;C:\ProgramData\chocolatey\bin;C:\Strawberry\perl\bin;%PATH%
-          
-          :: Using ^ for multiline in cmd instead of backticks
-          cmake -B build ^
-            -G "Visual Studio 17 2022" ^
-            -T v142 ^
-            -A x64 ^
-            -DCMAKE_BUILD_TYPE=Release ^
-            -DCMAKE_POLICY_VERSION_MINIMUM=3.5 ^
-            -DCMAKE_POLICY_DEFAULT_CMP0148=OLD ^
-            -DRV_BUILD_PYSIDE=OFF ^
-            -DRV_DEPS_PYSIDE2_BUILD=OFF ^
-            -DRV_DEPS_PYTHON_BUILD=OFF ^
-            -DRV_BUILD_DOCS=OFF ^
-            -DCMAKE_PREFIX_PATH="C:/Qt/5.15.2/msvc2019_64" ^
-            -DRV_DEPS_QT_LOCATION="C:/Qt/5.15.2/msvc2019_64" ^
+          # Running natively in MSYS2 prevents Git Bash from breaking the dependencies
+          # Hardcoded Qt path directly eliminates the $env crash
+          cmake -B build \
+            -G "Visual Studio 17 2022" \
+            -T v142 \
+            -A x64 \
+            -DCMAKE_BUILD_TYPE=Release \
+            -DCMAKE_POLICY_VERSION_MINIMUM=3.5 \
+            -DCMAKE_POLICY_DEFAULT_CMP0148=OLD \
+            -DRV_BUILD_PYSIDE=OFF \
+            -DRV_DEPS_PYSIDE2_BUILD=OFF \
+            -DRV_DEPS_PYTHON_BUILD=OFF \
+            -DRV_BUILD_DOCS=OFF \
+            -DCMAKE_PREFIX_PATH="C:/Qt/5.15.2/msvc2019_64" \
+            -DRV_DEPS_QT_LOCATION="C:/Qt/5.15.2/msvc2019_64" \
             -DRV_DEPS_WIN_PERL_ROOT="C:/Strawberry/perl/bin"
 
       - name: Build OpenRV
-        shell: cmd
-        run: |
-          set PATH=C:\msys64\usr\bin;C:\msys64\mingw64\bin;C:\ProgramData\chocolatey\bin;C:\Strawberry\perl\bin;%PATH%
-          cmake --build build --config Release --parallel 4
+        shell: msys2 {0}
+        run: cmake --build build --config Release --parallel 4
 
       - name: Install OpenRV
-        shell: cmd
-        run: |
-          set PATH=C:\msys64\usr\bin;C:\msys64\mingw64\bin;C:\ProgramData\chocolatey\bin;C:\Strawberry\perl\bin;%PATH%
-          cmake --install build --config Release --prefix install
+        shell: msys2 {0}
+        run: cmake --install build --config Release --prefix install
 
       - name: Upload artifact
         uses: actions/upload-artifact@v4
