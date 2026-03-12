@@ -11,8 +11,6 @@ jobs:
     env:
       QT_VERSION: 5.15.2
       PYTHON_VERSION: "3.10"
-      # Declare the expanded PATH once so both Configure and Build share it
-      RV_BUILD_PATH: "C:/msys64/usr/bin;C:/msys64/mingw64/bin;C:/ProgramData/chocolatey/bin;C:/Strawberry/perl/bin"
 
     steps:
 
@@ -62,10 +60,10 @@ jobs:
         shell: powershell
         run: |
           $bin="C:\ProgramData\chocolatey\bin"
-          if (Test-Path "$bin\winflex.exe")  { Copy-Item "$bin\winflex.exe"  "$bin\flex.exe"  -Force }
-          if (Test-Path "$bin\win_flex.exe") { Copy-Item "$bin\win_flex.exe" "$bin\flex.exe"  -Force }
-          if (Test-Path "$bin\winbison.exe") { Copy-Item "$bin\winbison.exe" "$bin\bison.exe" -Force }
-          if (Test-Path "$bin\win_bison.exe"){ Copy-Item "$bin\win_bison.exe""$bin\bison.exe" -Force }
+          if (Test-Path "$bin\winflex.exe")   { Copy-Item "$bin\winflex.exe"   "$bin\flex.exe"  -Force }
+          if (Test-Path "$bin\win_flex.exe")  { Copy-Item "$bin\win_flex.exe"  "$bin\flex.exe"  -Force }
+          if (Test-Path "$bin\winbison.exe")  { Copy-Item "$bin\winbison.exe"  "$bin\bison.exe" -Force }
+          if (Test-Path "$bin\win_bison.exe") { Copy-Item "$bin\win_bison.exe" "$bin\bison.exe" -Force }
 
       - name: Install Qt
         uses: jurplel/install-qt-action@v4
@@ -132,7 +130,6 @@ jobs:
 
       - name: Configure OpenRV
         shell: bash
-        # Force MSBuild child processes to also see these dirs via PATH
         env:
           PATH: "/c/msys64/usr/bin:/c/msys64/mingw64/bin:/c/ProgramData/chocolatey/bin:/c/Strawberry/perl/bin:$PATH"
         run: |
