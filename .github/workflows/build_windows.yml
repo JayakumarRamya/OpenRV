@@ -111,6 +111,7 @@ jobs:
       - name: Inject Global Paths
         shell: powershell
         run: |
+          Add-Content -Path $env:GITHUB_PATH -Value "C:\Program Files\CMake\bin"
           Add-Content -Path $env:GITHUB_PATH -Value "C:\msys64\usr\bin"
           Add-Content -Path $env:GITHUB_PATH -Value "C:\msys64\mingw64\bin"
           Add-Content -Path $env:GITHUB_PATH -Value "C:\ProgramData\chocolatey\bin"
@@ -121,6 +122,8 @@ jobs:
         run: |
           echo "--- PATH ---"
           echo "$PATH"
+          echo "--- cmake ---"
+          cmake --version || echo "cmake NOT FOUND"
           echo "--- nasm ---"
           nasm --version || echo "nasm NOT FOUND"
           echo "--- autoconf ---"
@@ -131,7 +134,7 @@ jobs:
       - name: Configure OpenRV
         shell: bash
         env:
-          PATH: "/c/msys64/usr/bin:/c/msys64/mingw64/bin:/c/ProgramData/chocolatey/bin:/c/Strawberry/perl/bin:$PATH"
+          PATH: "/c/Program Files/CMake/bin:/c/msys64/usr/bin:/c/msys64/mingw64/bin:/c/ProgramData/chocolatey/bin:/c/Strawberry/perl/bin:$PATH"
         run: |
           set -e
 
@@ -152,18 +155,20 @@ jobs:
             -DCMAKE_PREFIX_PATH="$QT_HOME" \
             -DRV_DEPS_QT_LOCATION="$QT_HOME" \
             -DRV_DEPS_WIN_PERL_ROOT="C:/Strawberry/perl/bin" \
-            -DCMAKE_PROGRAM_PATH="C:/msys64/usr/bin;C:/msys64/mingw64/bin;C:/ProgramData/chocolatey/bin"
+            -DCMAKE_PROGRAM_PATH="C:/Program Files/CMake/bin;C:/msys64/usr/bin;C:/msys64/mingw64/bin;C:/ProgramData/chocolatey/bin"
 
       - name: Build OpenRV
         shell: bash
         env:
-          PATH: "/c/msys64/usr/bin:/c/msys64/mingw64/bin:/c/ProgramData/chocolatey/bin:/c/Strawberry/perl/bin:$PATH"
+          PATH: "/c/Program Files/CMake/bin:/c/msys64/usr/bin:/c/msys64/mingw64/bin:/c/ProgramData/chocolatey/bin:/c/Strawberry/perl/bin:$PATH"
         run: |
           set -e
           cmake --build build --config Release --parallel 4
 
       - name: Install OpenRV
         shell: bash
+        env:
+          PATH: "/c/Program Files/CMake/bin:$PATH"
         run: |
           set -e
           cmake --install build --config Release --prefix install
