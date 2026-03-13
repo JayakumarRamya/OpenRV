@@ -98,10 +98,10 @@ jobs:
           update: true
           path-type: inherit
           install: >
-            autoconf
-            automake
-            libtool
-            pkgconf
+            base-devel
+            autotools
+            gettext
+            gettext-devel
             meson
             ninja
             bison
@@ -113,7 +113,6 @@ jobs:
             unzip
             zip
             gperf
-            gettext-devel
             mingw-w64-x86_64-toolchain
             mingw-w64-x86_64-meson
             mingw-w64-x86_64-libarchive
@@ -122,10 +121,7 @@ jobs:
       - name: Configure OpenRV
         shell: msys2 {0}
         run: |
-          # 1. Prevent MSYS2 from ruining FFmpeg's regex backslashes
           export MSYS2_ARG_CONV_EXCL="*"
-          
-          # 2. Format the GitHub Python path so MSYS2 CMake can read it properly
           WIN_PYTHON_PATH=$(cygpath -m "$pythonLocation/python.exe")
 
           cmake -B build \
@@ -148,7 +144,6 @@ jobs:
       - name: Build OpenRV
         shell: msys2 {0}
         run: |
-          # Must re-apply the exclusion flag for the build step!
           export MSYS2_ARG_CONV_EXCL="*"
           cmake --build build --config Release --parallel 4
 
