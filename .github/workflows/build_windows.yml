@@ -22,11 +22,12 @@ jobs:
         with:
           submodules: recursive
 
+      # BUSTING THE CACHE: Added -v2- to force a completely clean slate
       - name: Cache build
         uses: actions/cache@v4
         with:
           path: build
-          key: openrv-${{ runner.os }}-${{ hashFiles('CMakeLists.txt') }}
+          key: openrv-${{ runner.os }}-v2-${{ hashFiles('CMakeLists.txt') }}
 
       - name: Setup MSVC
         uses: ilammy/msvc-dev-cmd@v1
@@ -53,8 +54,7 @@ jobs:
           choco install cmake --version=3.27.9 -y
 
           python -m pip install --upgrade pip
-          pip install pyyaml requests wheel numpy
-          pip install meson ninja
+          pip install pyyaml requests wheel numpy meson ninja
 
       - name: Fix flex and bison
         shell: powershell
@@ -88,15 +88,14 @@ jobs:
       - name: Setup Native MSYS2 Tools
         shell: cmd
         run: |
-          :: Ditching the buggy Action and using the runner's native MSYS2
           C:\msys64\usr\bin\pacman.exe -Sy --noconfirm base-devel autotools gettext-devel gperf
 
       - name: Configure OpenRV
         shell: cmd
         run: |
-          :: Clean, direct paths with no hidden cache directories
           set PATH=C:\Qt\5.15.2\msvc2019_64\bin;C:\msys64\usr\bin;C:\msys64\mingw64\bin;C:\ProgramData\chocolatey\bin;C:\Strawberry\perl\bin;%PATH%
           
+          :: Added ROOT_DIR locks to physically restrain CMake to Python 3.10
           cmake -B build ^
             -G "Visual Studio 17 2022" ^
             -T v142 ^
@@ -111,8 +110,10 @@ jobs:
             -DCMAKE_PREFIX_PATH="C:/Qt/5.15.2/msvc2019_64" ^
             -DRV_DEPS_QT_LOCATION="C:/Qt/5.15.2/msvc2019_64" ^
             -DRV_DEPS_WIN_PERL_ROOT="C:/Strawberry/perl/bin" ^
-            -DPython_EXECUTABLE="%pythonLocation%\python.exe" ^
-            -DPython3_EXECUTABLE="%pythonLocation%\python.exe"
+            -DPython3_ROOT_DIR="%pythonLocation%" ^
+            -DPython3_EXECUTABLE="%pythonLocation%\python.exe" ^
+            -DPython_ROOT_DIR="%pythonLocation%" ^
+            -DPython_EXECUTABLE="%pythonLocation%\python.exe"
 
       - name: Build OpenRV
         shell: cmd
