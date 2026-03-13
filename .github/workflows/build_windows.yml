@@ -85,6 +85,12 @@ jobs:
           New-Item -ItemType Directory -Force -Path C:\Qt\5.15.2\msvc2019_64\translations
           New-Item -ItemType Directory -Force -Path C:\Qt\5.15.2\msvc2019_64\resources
 
+      - name: Set Global Paths
+        shell: powershell
+        run: |
+          echo "C:\Strawberry\perl\bin" >> $env:GITHUB_PATH
+          echo "C:\ProgramData\chocolatey\bin" >> $env:GITHUB_PATH
+
       - name: Setup MSYS2 tools
         uses: msys2/setup-msys2@v2
         with:
@@ -113,59 +119,42 @@ jobs:
             mingw-w64-x86_64-glew
 
       - name: Configure OpenRV
-        shell: powershell
+        shell: msys2 {0}
         run: |
-          # 1. Format paths perfectly for the MSYS2 bash wrapper
-          $winPythonPath = $(cygpath -m "$env:pythonLocation/python.exe")
-          
-          # 2. Write the exact bash script to disk to avoid shell escaping errors
-          $bashScript = @"
+          # Disable MSYS2 path mangling so FFmpeg doesn't break
           export MSYS2_ARG_CONV_EXCL="*"
-          export PATH="/usr/bin:/mingw64/bin:`$PATH"
           
-          cmake -B build `
-            -G "Visual Studio 17 2022" `
-            -T v142 `
-            -A x64 `
-            -DCMAKE_BUILD_TYPE=Release `
-            -DCMAKE_POLICY_VERSION_MINIMUM=3.5 `
-            -DCMAKE_POLICY_DEFAULT_CMP0148=OLD `
-            -DRV_BUILD_PYSIDE=OFF `
-            -DRV_DEPS_PYSIDE2_BUILD=OFF `
-            -DRV_DEPS_PYTHON_BUILD=OFF `
-            -DRV_BUILD_DOCS=OFF `
-            -DCMAKE_PREFIX_PATH="C:/Qt/5.15.2/msvc2019_64" `
-            -DRV_DEPS_QT_LOCATION="C:/Qt/5.15.2/msvc2019_64" `
-            -DRV_DEPS_WIN_PERL_ROOT="C:/Strawberry/perl/bin" `
-            -DPython_EXECUTABLE="$winPythonPath" `
-            -DPython3_EXECUTABLE="$winPythonPath"
-          "@
-          Set-Content -Path configure.sh -Value $bashScript
+          # Convert Python path to Windows format so MSVC can read it
+          WIN_PYTHON_PATH=$(cygpath -m "$pythonLocation/python.exe")
           
-          # 3. Force the native MSYS2 wrapper to execute it
-          msys2do bash configure.sh
+          cmake -B build \
+            -G "Visual Studio 17 2022" \
+            -T v142 \
+            -A x64 \
+            -DCMAKE_BUILD_TYPE=Release \
+            -DCMAKE_POLICY_VERSION_MINIMUM=3.5 \
+            -DCMAKE_POLICY_DEFAULT_CMP0148=OLD \
+            -DRV_BUILD_PYSIDE=OFF \
+            -DRV_DEPS_PYSIDE2_BUILD=OFF \
+            -DRV_DEPS_PYTHON_BUILD=OFF \
+            -DRV_BUILD_DOCS=OFF \
+            -DCMAKE_PREFIX_PATH="C:/Qt/5.15.2/msvc2019_64" \
+            -DRV_DEPS_QT_LOCATION="C:/Qt/5.15.2/msvc2019_64" \
+            -DRV_DEPS_WIN_PERL_ROOT="C:/Strawberry/perl/bin" \
+            -DPython_EXECUTABLE="$WIN_PYTHON_PATH" \
+            -DPython3_EXECUTABLE="$WIN_PYTHON_PATH"
 
       - name: Build OpenRV
-        shell: powershell
+        shell: msys2 {0}
         run: |
-          $bashScript = @"
           export MSYS2_ARG_CONV_EXCL="*"
-          export PATH="/usr/bin:/mingw64/bin:`$PATH"
           cmake --build build --config Release --parallel 4
-          "@
-          Set-Content -Path build.sh -Value $bashScript
-          msys2do bash build.sh
 
       - name: Install OpenRV
-        shell: powershell
+        shell: msys2 {0}
         run: |
-          $bashScript = @"
           export MSYS2_ARG_CONV_EXCL="*"
-          export PATH="/usr/bin:/mingw64/bin:`$PATH"
           cmake --install build --config Release --prefix install
-          "@
-          Set-Content -Path install.sh -Value $bashScript
-          msys2do bash install.sh
 
       - name: Upload artifact
         uses: actions/upload-artifact@v4
