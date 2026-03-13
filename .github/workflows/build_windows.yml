@@ -26,7 +26,7 @@ jobs:
         uses: actions/cache@v4
         with:
           path: build
-          key: openrv-${{ runner.os }}-v2-${{ hashFiles('CMakeLists.txt') }}
+          key: openrv-${{ runner.os }}-v3-${{ hashFiles('CMakeLists.txt') }}
 
       - name: Setup MSVC
         uses: ilammy/msvc-dev-cmd@v1
@@ -92,12 +92,12 @@ jobs:
       - name: Configure OpenRV
         shell: cmd
         run: |
-          :: Create stage directories so PCRE2 doesn't crash during copy
-          if not exist build\stage\app\bin mkdir build\stage\app\bin
-          if not exist build\stage\app\lib mkdir build\stage\app\lib
+          :: Recursively create stage directories so PCRE2 copy doesn't fail
+          cmake -E make_directory build\stage\app\bin
+          cmake -E make_directory build\stage\app\lib
 
-          :: Add LLVM to path so PySide2 can generate QtWebEngineCore properly
-          set PATH=C:\Program Files\LLVM\bin;C:\Qt\5.15.2\msvc2019_64\bin;C:\msys64\usr\bin;C:\msys64\mingw64\bin;C:\ProgramData\chocolatey\bin;C:\Strawberry\perl\bin;%PATH%
+          :: Force Python 3.10 to the absolute front of the PATH
+          set PATH=%pythonLocation%;%pythonLocation%\Scripts;C:\Program Files\LLVM\bin;C:\Qt\5.15.2\msvc2019_64\bin;C:\msys64\usr\bin;C:\msys64\mingw64\bin;C:\ProgramData\chocolatey\bin;C:\Strawberry\perl\bin;%PATH%
           
           cmake -B build ^
             -G "Visual Studio 17 2022" ^
@@ -121,13 +121,13 @@ jobs:
       - name: Build OpenRV
         shell: cmd
         run: |
-          set PATH=C:\Program Files\LLVM\bin;C:\Qt\5.15.2\msvc2019_64\bin;C:\msys64\usr\bin;C:\msys64\mingw64\bin;C:\ProgramData\chocolatey\bin;C:\Strawberry\perl\bin;%PATH%
+          set PATH=%pythonLocation%;%pythonLocation%\Scripts;C:\Program Files\LLVM\bin;C:\Qt\5.15.2\msvc2019_64\bin;C:\msys64\usr\bin;C:\msys64\mingw64\bin;C:\ProgramData\chocolatey\bin;C:\Strawberry\perl\bin;%PATH%
           cmake --build build --config Release --parallel 4
 
       - name: Install OpenRV
         shell: cmd
         run: |
-          set PATH=C:\Program Files\LLVM\bin;C:\Qt\5.15.2\msvc2019_64\bin;C:\msys64\usr\bin;C:\msys64\mingw64\bin;C:\ProgramData\chocolatey\bin;C:\Strawberry\perl\bin;%PATH%
+          set PATH=%pythonLocation%;%pythonLocation%\Scripts;C:\Program Files\LLVM\bin;C:\Qt\5.15.2\msvc2019_64\bin;C:\msys64\usr\bin;C:\msys64\mingw64\bin;C:\ProgramData\chocolatey\bin;C:\Strawberry\perl\bin;%PATH%
           cmake --install build --config Release --prefix install
 
       - name: Upload artifact
