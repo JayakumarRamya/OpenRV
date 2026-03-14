@@ -144,7 +144,6 @@ jobs:
           }
           if (-not $patched) {
             Write-Host "WARNING: Could not find PCRE2 configure flags to patch!"
-            Write-Host "Falling back to post-build DLL creation strategy..."
           }
 
       - name: Patch OCIO to disable Python bindings
@@ -154,13 +153,10 @@ jobs:
             $content = Get-Content $_.FullName -Raw -ErrorAction SilentlyContinue
             if ($content -and $content -match '(?i)RV_DEPS_OCIO') {
               Write-Host "Found OCIO config: $($_.FullName)"
-
               $original = $content
 
-              # Force Python bindings OFF
               $content = $content -replace '(-DOCIO_BUILD_PYTHON_BINDINGS=)\w+', '${1}OFF'
 
-              # If flag doesn't exist, add it to CMAKE_ARGS
               if ($content -notmatch 'OCIO_BUILD_PYTHON_BINDINGS') {
                 $content = $content -replace '(CMAKE_ARGS)', '${1} -DOCIO_BUILD_PYTHON_BINDINGS=OFF'
               }
@@ -252,48 +248,78 @@ jobs:
             -DOCIO_BUILD_PYTHON_BINDINGS=OFF ^
             -DOCIO_BUILD_APPS=OFF
 
-      - name: PCRE2 fallback - create DLLs if missing after configure
+      - name: Create PCRE2 fallback script
         shell: powershell
         run: |
-          # After configure, the ExternalProject dirs are set up
-          # We'll create a scheduled task-like approach: monitor and fix
-          # Create a helper script that will be called during build
           $script = @'
           $pcre2Install = "D:\a\OpenRV\OpenRV\build\RV_DEPS_PCRE2\install"
           $pcre2Src = "D:\a\OpenRV\OpenRV\build\RV_DEPS_PCRE2\src"
           $stageDir = "D:\a\OpenRV\OpenRV\build\stage\app\bin"
 
-          # Ensure directories exist
           New-Item -ItemType Directory -Force -Path "$pcre2Install\bin" | Out-Null
           New-Item -ItemType Directory -Force -Path $stageDir | Out-Null
 
-          # Check if DLLs exist
           $dll1 = "$pcre2Install\bin\libpcre2-8-0.dll"
           $dll2 = "$pcre2Install\bin\libpcre2-posix-3.dll"
 
-          if (!(Test-Path $dll1) -or !(Test-Path $dll2)) {
-              Write-Host "PCRE2 DLLs missing - rebuilding with shared libraries..."
+          Write-Host "Checking for PCRE2 DLLs..."
+          Write-Host "  dll1 exists: $(Test-Path $dll1)"
+          Write-Host "  dll2 exists: $(Test-Path $dll2)"
 
-              # Try to rebuild PCRE2 with shared libs using MSYS2
+          # List what actually exists in install dir
+          Write-Host "`nContents of PCRE2 install:"
+          if (Test-Path $pcre2Install) {
+            Get-ChildItem -Recurse $pcre2Install | ForEach-Object { Write-Host "  $($_.FullName)" }
+          }
+
+          if (!(Test-Path $dll1) -or !(Test-Path $dll2)) {
+              Write-Host "`nPCRE2 DLLs missing - rebuilding with shared libraries via MSYS2..."
+
               $env:PATH = "C:\msys64\usr\bin;C:\msys64\mingw64\bin;$env:PATH"
               $env:MSYSTEM = "MSYS"
 
               if (Test-Path $pcre2Src) {
-                  Push-Location $pcre2Src
-                  # Reconfigure with shared enabled
-                  & C:\msys64\usr\bin\bash.exe -lc "cd '$($pcre2Src -replace '\\','/')' && ./configure --prefix='$($pcre2Install -replace '\\','/')' --enable-shared --enable-static --enable-pcre2-8 --enable-pcre2-16 --enable-pcre2-32 && make clean && make -j4 && make install"
-                  Pop-Location
+                  $srcPath = $pcre2Src -replace '\\','/'
+                  $installPath = $pcre2Install -replace '\\','/'
+
+                  & C:\msys64\usr\bin\bash.exe -lc @"
+          cd '$srcPath'
+          echo 'Reconfiguring PCRE2 with shared libraries...'
+          ./configure --prefix='$installPath' --enable-shared --enable-static --enable-pcre2-8 --enable-pcre2-16 --enable-pcre2-32
+          make clean
+          make -j4
+          make install
+          echo 'Done rebuilding PCRE2'
+          ls -la '$installPath/bin/'
+          "@
+              } else {
+                  Write-Host "PCRE2 source dir not found: $pcre2Src"
               }
           }
 
-          # Verify
-          if (Test-Path $dll1) { Write-Host "OK: $dll1" } else { Write-Host "MISSING: $dll1" }
-          if (Test-Path $dll2) { Write-Host "OK: $dll2" } else { Write-Host "MISSING: $dll2" }
+          # Final verify
+          Write-Host "`n=== Final PCRE2 status ==="
+          if (Test-Path $dll1) {
+              Write-Host "OK: $dll1"
+              Copy-Item $dll1 $stageDir -Force
+              Write-Host "Copied to $stageDir"
+          } else {
+              Write-Host "STILL MISSING: $dll1"
+          }
+          if (Test-Path $dll2) {
+              Write-Host "OK: $dll2"
+              Copy-Item $dll2 $stageDir -Force
+              Write-Host "Copied to $stageDir"
+          } else {
+              Write-Host "STILL MISSING: $dll2"
+          }
           '@
-          Set-Content "fix_pcre2.ps1" $script
+          Set-Content "fix_pcre2.ps1" $script -Encoding UTF8
           Write-Host "Created fix_pcre2.ps1 fallback script"
 
       - name: Build OpenRV
+        id: build
+        continue-on-error: true
         shell: cmd
         run: |
           cmake -E make_directory build\stage\app\bin
@@ -301,13 +327,102 @@ jobs:
           set LLVM_INSTALL_DIR=C:\Program Files\LLVM
           set CLANG_INSTALL_DIR=C:\Program Files\LLVM
           set PATH=%pythonLocation%;%pythonLocation%\Scripts;C:\Program Files\LLVM\bin;C:\Qt\5.15.2\msvc2019_64\bin;C:\msys64\usr\bin;C:\msys64\mingw64\bin;C:\ProgramData\chocolatey\bin;C:\Strawberry\perl\bin;%PATH%
-          cmake --build build --config Release --parallel 4
-          if %errorlevel% neq 0 (
-            echo === PCRE2 build may have failed, running fallback ===
-            powershell -ExecutionPolicy Bypass -File fix_pcre2.ps1
-            echo === Retrying build ===
-            cmake --build build --config Release --parallel 4
-          )
+          cmake --build build --config Release --parallel 4 > build.log 2>&1
+          set BUILD_EXIT=%errorlevel%
+          type build.log
+          exit /b %BUILD_EXIT%
+
+      - name: PCRE2 fallback rebuild if build failed
+        if: steps.build.outcome == 'failure'
+        shell: powershell
+        run: |
+          Write-Host "=== Running PCRE2 fallback rebuild ==="
+          powershell -ExecutionPolicy Bypass -File fix_pcre2.ps1
+
+      - name: Retry build after PCRE2 fix
+        id: build_retry
+        if: steps.build.outcome == 'failure'
+        continue-on-error: true
+        shell: cmd
+        run: |
+          set LLVM_INSTALL_DIR=C:\Program Files\LLVM
+          set CLANG_INSTALL_DIR=C:\Program Files\LLVM
+          set PATH=%pythonLocation%;%pythonLocation%\Scripts;C:\Program Files\LLVM\bin;C:\Qt\5.15.2\msvc2019_64\bin;C:\msys64\usr\bin;C:\msys64\mingw64\bin;C:\ProgramData\chocolatey\bin;C:\Strawberry\perl\bin;%PATH%
+          cmake --build build --config Release --parallel 4 > build_retry.log 2>&1
+          set BUILD_EXIT=%errorlevel%
+          type build_retry.log
+          exit /b %BUILD_EXIT%
+
+      - name: Extract errors from build log
+        if: steps.build.outcome == 'failure' || steps.build_retry.outcome == 'failure'
+        shell: powershell
+        run: |
+          $logFile = if (Test-Path "build_retry.log") { "build_retry.log" } else { "build.log" }
+          if (Test-Path $logFile) {
+            $log = Get-Content $logFile
+            $totalLines = $log.Count
+            Write-Host "=== BUILD LOG: $totalLines total lines from $logFile ==="
+
+            Write-Host "`n=========================================="
+            Write-Host "  SECTION 1: ALL ERRORS (filtered)"
+            Write-Host "==========================================`n"
+            $log | Select-String -Pattern "(?i)(^.*error\s+(C|MSB|LNK)\d+.*$|^.*error:.*$|^.*fatal error.*$|^.*Error copying.*$|^.*exited with code [^0].*$)" |
+              ForEach-Object {
+                Write-Host $_.Line
+              }
+
+            Write-Host "`n=========================================="
+            Write-Host "  SECTION 2: FAILED TARGETS"
+            Write-Host "==========================================`n"
+            $log | Select-String -Pattern "(?i)(Build FAILED|exited with code|CUSTOMBUILD.*error|error MSB)" |
+              ForEach-Object {
+                Write-Host $_.Line
+              }
+
+            Write-Host "`n=========================================="
+            Write-Host "  SECTION 3: FIRST 5 ERRORS WITH CONTEXT"
+            Write-Host "==========================================`n"
+            $errorLines = @()
+            for ($i = 0; $i -lt $log.Count; $i++) {
+              if ($log[$i] -match '(?i)(error\s+(C|MSB|LNK)\d+|fatal error|Error copying)') {
+                $errorLines += $i
+              }
+            }
+            $shown = 0
+            foreach ($lineNum in $errorLines) {
+              if ($shown -ge 5) { break }
+              $start = [Math]::Max(0, $lineNum - 10)
+              $end = [Math]::Min($log.Count - 1, $lineNum + 5)
+              Write-Host "--- Error at line $lineNum ---"
+              for ($i = $start; $i -le $end; $i++) {
+                $prefix = if ($i -eq $lineNum) { ">>>" } else { "   " }
+                Write-Host "$prefix [$i] $($log[$i])"
+              }
+              Write-Host ""
+              $shown++
+            }
+
+            Write-Host "`n=========================================="
+            Write-Host "  SECTION 4: LAST 200 LINES"
+            Write-Host "==========================================`n"
+            $log | Select-Object -Last 200 | ForEach-Object { Write-Host $_ }
+          } else {
+            Write-Host "No build log found!"
+          }
+
+      - name: Upload build log on failure
+        if: steps.build.outcome == 'failure' || steps.build_retry.outcome == 'failure'
+        uses: actions/upload-artifact@v4
+        with:
+          name: build-logs-failed
+          path: |
+            build.log
+            build_retry.log
+          retention-days: 5
+
+      - name: Fail if both builds failed
+        if: steps.build.outcome == 'failure' && steps.build_retry.outcome == 'failure'
+        run: exit 1
 
       - name: Install OpenRV
         shell: cmd
