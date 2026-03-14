@@ -26,7 +26,7 @@ jobs:
         uses: actions/cache@v4
         with:
           path: build
-          key: openrv-${{ runner.os }}-v8-${{ hashFiles('CMakeLists.txt') }}
+          key: openrv-${{ runner.os }}-v10-${{ hashFiles('CMakeLists.txt') }}
 
       - name: Setup MSVC
         uses: ilammy/msvc-dev-cmd@v1
@@ -85,66 +85,70 @@ jobs:
         shell: cmd
         run: |
           C:\msys64\usr\bin\pacman.exe -Sy --noconfirm base-devel autotools gettext-devel gperf nasm
+          C:\msys64\usr\bin\pacman.exe -S --noconfirm gcc make
+          C:\msys64\usr\bin\bash.exe -lc "which gcc && gcc --version"
 
-      - name: Diagnose PCRE2 cmake configuration
+      - name: Show PCRE2 cmake before patching
         shell: powershell
         run: |
-          Write-Host "=== Finding all PCRE2-related cmake files ==="
-          Get-ChildItem -Path "cmake" -Recurse -Include "*.cmake","CMakeLists.txt" -ErrorAction SilentlyContinue | ForEach-Object {
-            $content = Get-Content $_.FullName -Raw -ErrorAction SilentlyContinue
-            if ($content -and $content -match '(?i)pcre2') {
-              Write-Host "`n============================================"
-              Write-Host "FILE: $($_.FullName)"
-              Write-Host "============================================"
-              Get-Content $_.FullName
+          $file = "cmake/dependencies/pcre2.cmake"
+          if (Test-Path $file) {
+            Write-Host "=== FULL CONTENT OF pcre2.cmake ==="
+            Get-Content $file
+          } else {
+            Write-Host "pcre2.cmake not found at expected path, searching..."
+            Get-ChildItem -Path "cmake" -Recurse -Include "*.cmake","CMakeLists.txt" | ForEach-Object {
+              $c = Get-Content $_.FullName -Raw -ErrorAction SilentlyContinue
+              if ($c -and $c -match '(?i)pcre2') {
+                Write-Host "`n=== $($_.FullName) ==="
+                Get-Content $_.FullName
+              }
             }
           }
 
       - name: Patch PCRE2 to build shared libraries
         shell: powershell
         run: |
-          Write-Host "=== Patching PCRE2 cmake to enable shared library build ==="
-          $patched = $false
-          Get-ChildItem -Path "cmake" -Recurse -Include "*.cmake","CMakeLists.txt" -ErrorAction SilentlyContinue | ForEach-Object {
-            $content = Get-Content $_.FullName -Raw -ErrorAction SilentlyContinue
+          $files = Get-ChildItem -Path "cmake" -Recurse -Include "*.cmake","CMakeLists.txt" -ErrorAction SilentlyContinue
+          foreach ($f in $files) {
+            $content = Get-Content $f.FullName -Raw -ErrorAction SilentlyContinue
             if ($content -and $content -match '(?i)pcre2') {
+              Write-Host "Processing: $($f.FullName)"
               $original = $content
 
-              # Fix 1: Change --disable-shared to --enable-shared (autotools)
-              if ($content -match '--disable-shared') {
-                $content = $content -replace '--disable-shared', '--enable-shared'
-                Write-Host "Replaced --disable-shared with --enable-shared in $($_.FullName)"
+              # Strategy 1: Replace --disable-shared with --enable-shared
+              $content = $content -replace '--disable-shared', '--enable-shared'
+
+              # Strategy 2: Inject --enable-shared before --prefix in configure commands
+              if ($content -notmatch '--enable-shared') {
+                $content = $content -replace '(configure[^\n]*?)(--prefix)', '$1 --enable-shared $2'
+                Write-Host "  Injected --enable-shared before --prefix"
               }
 
-              # Fix 2: If --enable-shared is still missing but configure is present, add it
-              if ($content -match 'configure' -and $content -notmatch '--enable-shared') {
-                $content = $content -replace '(--enable-static)', '--enable-shared --enable-static'
-                Write-Host "Added --enable-shared alongside --enable-static in $($_.FullName)"
+              # Strategy 3: If still no --enable-shared, inject after ./configure or /configure
+              if ($content -notmatch '--enable-shared') {
+                $content = $content -replace '(\./configure)', '$1 --enable-shared'
+                $content = $content -replace '(/configure\b)', '$1 --enable-shared'
+                Write-Host "  Injected --enable-shared after configure command"
               }
 
-              # Fix 3: If using CMake-based PCRE2 build, ensure BUILD_SHARED_LIBS=ON
-              if ($content -match 'CMAKE_ARGS' -and $content -match '(?i)pcre2') {
-                if ($content -match 'BUILD_SHARED_LIBS\s*(=|:)\s*(OFF|FALSE|0)') {
-                  $content = $content -replace '(BUILD_SHARED_LIBS\s*(=|:)\s*)(OFF|FALSE|0)', '${1}ON'
-                  Write-Host "Changed BUILD_SHARED_LIBS to ON in $($_.FullName)"
-                }
-                if ($content -notmatch 'BUILD_SHARED_LIBS') {
-                  $content = $content -replace '(CMAKE_ARGS)', '${1} -DBUILD_SHARED_LIBS=ON'
-                  Write-Host "Added BUILD_SHARED_LIBS=ON in $($_.FullName)"
-                }
+              # Strategy 4: If using CMake ExternalProject, add to CMAKE_ARGS
+              if ($content -match 'CMAKE_ARGS' -and $content -notmatch 'BUILD_SHARED_LIBS') {
+                $content = $content -replace '(CMAKE_ARGS)', '$1 -DBUILD_SHARED_LIBS=ON'
+                Write-Host "  Added BUILD_SHARED_LIBS=ON"
               }
 
               if ($content -ne $original) {
-                Set-Content $_.FullName $content -NoNewline
-                $patched = $true
-                Write-Host "`n--- Patched file content ---"
-                Get-Content $_.FullName
+                Set-Content $f.FullName $content -NoNewline
+                Write-Host "  PATCHED SUCCESSFULLY"
+                Write-Host "  --- Patched content ---"
+                Get-Content $f.FullName
+              } else {
+                Write-Host "  No changes needed or pattern not found"
+                Write-Host "  --- Current content ---"
+                Get-Content $f.FullName
               }
             }
-          }
-          if (-not $patched) {
-            Write-Host "WARNING: Could not find PCRE2 configure flags to patch!"
-            Write-Host "Falling back to post-build DLL creation strategy..."
           }
 
       - name: Patch OCIO to disable Python bindings
@@ -154,17 +158,11 @@ jobs:
             $content = Get-Content $_.FullName -Raw -ErrorAction SilentlyContinue
             if ($content -and $content -match '(?i)RV_DEPS_OCIO') {
               Write-Host "Found OCIO config: $($_.FullName)"
-
               $original = $content
-
-              # Force Python bindings OFF
               $content = $content -replace '(-DOCIO_BUILD_PYTHON_BINDINGS=)\w+', '${1}OFF'
-
-              # If flag doesn't exist, add it to CMAKE_ARGS
               if ($content -notmatch 'OCIO_BUILD_PYTHON_BINDINGS') {
                 $content = $content -replace '(CMAKE_ARGS)', '${1} -DOCIO_BUILD_PYTHON_BINDINGS=OFF'
               }
-
               if ($content -ne $original) {
                 Set-Content $_.FullName $content -NoNewline
                 Write-Host "Patched OCIO Python bindings OFF"
@@ -175,49 +173,16 @@ jobs:
       - name: Patch PySide2 validation to be non-fatal
         shell: powershell
         run: |
-          $found = $false
           Get-ChildItem -Recurse -Filter "make_pyside.py" -ErrorAction SilentlyContinue | ForEach-Object {
             Write-Host "Found: $($_.FullName)"
             $content = Get-Content $_.FullName -Raw
+            Write-Host "Contains check_returncode: $($content -match 'check_returncode')"
             if ($content -match 'check_returncode') {
-              $content = $content -replace '\.check_returncode\(\)', '  # check_returncode disabled for CI'
+              $content = $content -replace '\.check_returncode\(\)', '  # disabled for CI'
               Set-Content $_.FullName $content -NoNewline
-              Write-Host "Patched: removed check_returncode()"
-              $found = $true
-            }
-          }
-          if (-not $found) {
-            Write-Host "make_pyside.py not found or no check_returncode to patch"
-          }
-
-      - name: Verify all patches
-        shell: powershell
-        run: |
-          Write-Host "=== Python environment ==="
-          Write-Host "pythonLocation: $env:pythonLocation"
-          Write-Host "Python.h exists: $(Test-Path "$env:pythonLocation\include\Python.h")"
-          if (Test-Path "$env:pythonLocation\libs") {
-            Get-ChildItem "$env:pythonLocation\libs" -Filter "python*" | ForEach-Object { Write-Host "  $($_.Name)" }
-          }
-
-          Write-Host "`n=== Qt environment ==="
-          Write-Host "Qt exists: $(Test-Path 'C:\Qt\5.15.2\msvc2019_64\bin\qmake.exe')"
-
-          Write-Host "`n=== PCRE2 cmake after patch ==="
-          Get-ChildItem -Path "cmake" -Recurse -Include "*.cmake","CMakeLists.txt" -ErrorAction SilentlyContinue | ForEach-Object {
-            $c = Get-Content $_.FullName -Raw -ErrorAction SilentlyContinue
-            if ($c -and $c -match '(?i)pcre2') {
-              Write-Host "`nFILE: $($_.FullName)"
-              ($c -split "`n") | Where-Object { $_ -match '(?i)(pcre2|shared|disable|enable)' } | ForEach-Object { Write-Host "  $_" }
-            }
-          }
-
-          Write-Host "`n=== OCIO cmake after patch ==="
-          Get-ChildItem -Path "cmake" -Recurse -Include "*.cmake","CMakeLists.txt" -ErrorAction SilentlyContinue | ForEach-Object {
-            $c = Get-Content $_.FullName -Raw -ErrorAction SilentlyContinue
-            if ($c -and $c -match '(?i)OCIO.*python|python.*OCIO') {
-              Write-Host "FILE: $($_.FullName)"
-              ($c -split "`n") | Where-Object { $_ -match '(?i)python' } | ForEach-Object { Write-Host "  $_" }
+              Write-Host "PATCHED: removed check_returncode()"
+              Write-Host "--- Verify patch ---"
+              Get-Content $_.FullName | Select-String -Pattern "returncode|check_return" | ForEach-Object { Write-Host "  $_" }
             }
           }
 
@@ -252,47 +217,6 @@ jobs:
             -DOCIO_BUILD_PYTHON_BINDINGS=OFF ^
             -DOCIO_BUILD_APPS=OFF
 
-      - name: PCRE2 fallback - create DLLs if missing after configure
-        shell: powershell
-        run: |
-          # After configure, the ExternalProject dirs are set up
-          # We'll create a scheduled task-like approach: monitor and fix
-          # Create a helper script that will be called during build
-          $script = @'
-          $pcre2Install = "D:\a\OpenRV\OpenRV\build\RV_DEPS_PCRE2\install"
-          $pcre2Src = "D:\a\OpenRV\OpenRV\build\RV_DEPS_PCRE2\src"
-          $stageDir = "D:\a\OpenRV\OpenRV\build\stage\app\bin"
-
-          # Ensure directories exist
-          New-Item -ItemType Directory -Force -Path "$pcre2Install\bin" | Out-Null
-          New-Item -ItemType Directory -Force -Path $stageDir | Out-Null
-
-          # Check if DLLs exist
-          $dll1 = "$pcre2Install\bin\libpcre2-8-0.dll"
-          $dll2 = "$pcre2Install\bin\libpcre2-posix-3.dll"
-
-          if (!(Test-Path $dll1) -or !(Test-Path $dll2)) {
-              Write-Host "PCRE2 DLLs missing - rebuilding with shared libraries..."
-
-              # Try to rebuild PCRE2 with shared libs using MSYS2
-              $env:PATH = "C:\msys64\usr\bin;C:\msys64\mingw64\bin;$env:PATH"
-              $env:MSYSTEM = "MSYS"
-
-              if (Test-Path $pcre2Src) {
-                  Push-Location $pcre2Src
-                  # Reconfigure with shared enabled
-                  & C:\msys64\usr\bin\bash.exe -lc "cd '$($pcre2Src -replace '\\','/')' && ./configure --prefix='$($pcre2Install -replace '\\','/')' --enable-shared --enable-static --enable-pcre2-8 --enable-pcre2-16 --enable-pcre2-32 && make clean && make -j4 && make install"
-                  Pop-Location
-              }
-          }
-
-          # Verify
-          if (Test-Path $dll1) { Write-Host "OK: $dll1" } else { Write-Host "MISSING: $dll1" }
-          if (Test-Path $dll2) { Write-Host "OK: $dll2" } else { Write-Host "MISSING: $dll2" }
-          '@
-          Set-Content "fix_pcre2.ps1" $script
-          Write-Host "Created fix_pcre2.ps1 fallback script"
-
       - name: Build OpenRV
         shell: cmd
         run: |
@@ -303,8 +227,31 @@ jobs:
           set PATH=%pythonLocation%;%pythonLocation%\Scripts;C:\Program Files\LLVM\bin;C:\Qt\5.15.2\msvc2019_64\bin;C:\msys64\usr\bin;C:\msys64\mingw64\bin;C:\ProgramData\chocolatey\bin;C:\Strawberry\perl\bin;%PATH%
           cmake --build build --config Release --parallel 4
           if %errorlevel% neq 0 (
-            echo === PCRE2 build may have failed, running fallback ===
-            powershell -ExecutionPolicy Bypass -File fix_pcre2.ps1
+            echo.
+            echo === Build failed. Running PCRE2 fallback with fixed compiler PATH ===
+            echo.
+            echo --- Installing gcc in MSYS2 ---
+            C:\msys64\usr\bin\pacman.exe -S --noconfirm gcc make
+            echo.
+            echo --- Checking gcc availability ---
+            C:\msys64\usr\bin\bash.exe -lc "export PATH=/usr/bin:/usr/local/bin:$PATH && which gcc && gcc --version"
+            echo.
+            echo --- Checking PCRE2 install directory ---
+            dir /s /b D:\a\OpenRV\OpenRV\build\RV_DEPS_PCRE2\install 2>nul
+            echo.
+            echo --- Rebuilding PCRE2 with shared libraries ---
+            C:\msys64\usr\bin\bash.exe -lc "export PATH=/usr/bin:/usr/local/bin:$PATH && cd /d/a/OpenRV/OpenRV/build/RV_DEPS_PCRE2/src && ./configure --prefix=/d/a/OpenRV/OpenRV/build/RV_DEPS_PCRE2/install --enable-shared --enable-static --enable-pcre2-8 --enable-pcre2-16 --enable-pcre2-32 && make clean && make -j4 && make install && echo '=== PCRE2 rebuild SUCCESS ===' && ls -la /d/a/OpenRV/OpenRV/build/RV_DEPS_PCRE2/install/bin/ && ls -la /d/a/OpenRV/OpenRV/build/RV_DEPS_PCRE2/install/lib/"
+            echo.
+            echo --- Copying DLLs to staging ---
+            if exist "D:\a\OpenRV\OpenRV\build\RV_DEPS_PCRE2\install\bin\libpcre2-8-0.dll" (
+              copy /Y "D:\a\OpenRV\OpenRV\build\RV_DEPS_PCRE2\install\bin\libpcre2-8-0.dll" "D:\a\OpenRV\OpenRV\build\stage\app\bin\"
+              echo Copied libpcre2-8-0.dll to staging
+            )
+            if exist "D:\a\OpenRV\OpenRV\build\RV_DEPS_PCRE2\install\bin\libpcre2-posix-3.dll" (
+              copy /Y "D:\a\OpenRV\OpenRV\build\RV_DEPS_PCRE2\install\bin\libpcre2-posix-3.dll" "D:\a\OpenRV\OpenRV\build\stage\app\bin\"
+              echo Copied libpcre2-posix-3.dll to staging
+            )
+            echo.
             echo === Retrying build ===
             cmake --build build --config Release --parallel 4
           )
