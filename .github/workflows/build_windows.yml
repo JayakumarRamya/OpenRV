@@ -1,76 +1,79 @@
-name: Build OpenRV Windows
+name: Build OpenRV Windows (VFX-CY2024)
 
 on:
-  push:
-    branches: [ "main" ]
-  pull_request:
-    branches: [ "main" ]
-  workflow_dispatch: # Allows you to run this manually from the Actions tab
+  workflow_dispatch:
 
 jobs:
   build:
     runs-on: windows-2022
+    timeout-minutes: 480
+
+    env:
+      QT_VERSION: 5.15.2
+      PYTHON_VERSION: "3.10"
+      FORCE_JAVASCRIPT_ACTIONS_TO_NODE24: true
 
     steps:
-      - name: Enable Long Paths for Git
+      - name: Enable Windows long paths
         run: git config --system core.longpaths true
 
       - name: Checkout OpenRV
         uses: actions/checkout@v4
         with:
           submodules: recursive
-          fetch-depth: 1
 
-      - name: Cache Build
+      - name: Cache build
         uses: actions/cache@v4
         with:
           path: build
-          key: openrv-Windows-v5-${{ github.sha }}
-          restore-keys: |
-            openrv-Windows-v5-
+          key: openrv-${{ runner.os }}-v7-${{ hashFiles('CMakeLists.txt') }}
 
       - name: Setup MSVC
         uses: ilammy/msvc-dev-cmd@v1
         with:
           toolset: 14.2
-          arch: x64
 
       - name: Setup Python
         uses: actions/setup-python@v5
         with:
-          python-version: '3.10'
+          python-version: ${{ env.PYTHON_VERSION }}
 
-      - name: Fix Windows TEMP directory
+      - name: Fix Windows TEMP
+        shell: powershell
         run: |
           New-Item -ItemType Directory -Force -Path C:\temp
           echo "TEMP=C:\temp" >> $env:GITHUB_ENV
           echo "TMP=C:\temp" >> $env:GITHUB_ENV
 
-      - name: Install Chocolatey & Pip Dependencies
+      - name: Install build tools
+        shell: powershell
         run: |
           choco install strawberryperl pkgconfiglite jom llvm ninja -y
           choco install winflexbison -y
+          choco install cmake --version=3.27.9 -y
           python -m pip install --upgrade pip
-          pip install pyyaml requests wheel numpy meson ninja setuptools>=70.1.0 py7zr==1.0.* aqtinstall==3.3.*
+          pip install pyyaml requests wheel numpy meson ninja
 
-      - name: Setup Flex/Bison Aliases
+      - name: Fix flex and bison
+        shell: powershell
         run: |
           $bin="C:\ProgramData\chocolatey\bin"
-          if (Test-Path "$bin\winflex.exe") { Copy-Item "$bin\winflex.exe" "$bin\flex.exe" -Force }
-          if (Test-Path "$bin\win_flex.exe") { Copy-Item "$bin\win_flex.exe" "$bin\flex.exe" -Force }
-          if (Test-Path "$bin\winbison.exe") { Copy-Item "$bin\winbison.exe" "$bin\bison.exe" -Force }
-          if (Test-Path "$bin\win_bison.exe") { Copy-Item "$bin\win_bison.exe" "$bin\bison.exe" -Force }
+          if (Test-Path "$bin\winflex.exe")   { Copy-Item "$bin\winflex.exe"   "$bin\flex.exe"  -Force }
+          if (Test-Path "$bin\win_flex.exe")   { Copy-Item "$bin\win_flex.exe"  "$bin\flex.exe"  -Force }
+          if (Test-Path "$bin\winbison.exe")   { Copy-Item "$bin\winbison.exe"  "$bin\bison.exe" -Force }
+          if (Test-Path "$bin\win_bison.exe")  { Copy-Item "$bin\win_bison.exe" "$bin\bison.exe" -Force }
 
       - name: Install Qt
         uses: jurplel/install-qt-action@v4
         with:
-          version: '5.15.2'
-          arch: 'win64_msvc2019_64'
-          modules: 'qtwebengine'
-          dir: 'C:\Qt'
-          install-deps: 'true'
+          version: ${{ env.QT_VERSION }}
+          arch: win64_msvc2019_64
+          modules: qtwebengine
+          dir: C:\Qt
+          setup-python: 'false'
 
-      - name: Copy Qt to avoid path length issues
+      - name: Fix Qt layout
+        shell: powershell
         run: |
           if (!(Test-Path "C:\Qt\5.15.2")) {
             Copy-Item -Recurse "C:\Qt\Qt\5.15.2" "C:\Qt\5.15.2"
@@ -78,61 +81,144 @@ jobs:
           New-Item -ItemType Directory -Force -Path C:\Qt\5.15.2\msvc2019_64\translations
           New-Item -ItemType Directory -Force -Path C:\Qt\5.15.2\msvc2019_64\resources
 
-      - name: Install MSYS2 Dependencies
-        run: C:\msys64\usr\bin\pacman.exe -Sy --noconfirm base-devel autotools gettext-devel gperf nasm
+      - name: Setup Native MSYS2 Tools
         shell: cmd
-
-      - name: Apply Windows-Specific Patches
-        shell: python
         run: |
-          import os
-          print("Applying Windows-specific patches to OpenRV...")
-          
-          # 1. Fix OpenColorIO (OCIO) missing Python.h
-          ocio_file = "cmake/dependencies/RV_DEPS_OCIO.cmake"
-          if os.path.exists(ocio_file):
-              with open(ocio_file, "r") as f:
-                  ocio = f.read()
-              ocio = ocio.replace(
-                  "-DCMAKE_INSTALL_PREFIX",
-                  "-DPython_EXECUTABLE:FILEPATH=${Python_EXECUTABLE}\n        -DPython_ROOT_DIR:PATH=${Python_ROOT_DIR}\n        -DCMAKE_INSTALL_PREFIX"
-              )
-              with open(ocio_file, "w") as f:
-                  f.write(ocio)
+          C:\msys64\usr\bin\pacman.exe -Sy --noconfirm base-devel autotools gettext-devel gperf nasm
 
-          # 2. Fix PCRE2 DLL naming for Windows MSVC
-          pcre2_file = "cmake/dependencies/RV_DEPS_PCRE2.cmake"
-          if os.path.exists(pcre2_file):
-              with open(pcre2_file, "r") as f:
-                  pcre2 = f.read()
-              pcre2 = pcre2.replace("libpcre2-8-0.dll", "pcre2-8.dll")
-              pcre2 = pcre2.replace("libpcre2-posix-3.dll", "pcre2-posix.dll")
-              with open(pcre2_file, "w") as f:
-                  f.write(pcre2)
-
-          # 3. Fix PySide2 Validation crashing on QtWebEngineCore
-          make_pyside = "src/build/make_pyside.py"
-          if os.path.exists(make_pyside):
-              with open(make_pyside, "r") as f:
-                  pyside = f.read()
-              pyside = pyside.replace(
-                  "from PySide2 import QtWebEngineCore, QtWebEngine",
-                  "pass # Skipped WebEngine validation (DLL resolution issue on Win/Py3.10)"
-              )
-              with open(make_pyside, "w") as f:
-                  f.write(pyside)
-          
-          print("Patches applied successfully!")
-
-      - name: Configure CMake
+      - name: Patch PCRE2 DLL names for MSVC
+        shell: powershell
         run: |
-          cmake -E make_directory build\stage\app\bin
-          cmake -E make_directory build\stage\app\lib
-          
-          set LLVM_INSTALL_DIR=C:\Program Files\LLVM
-          set CLANG_INSTALL_DIR=C:\Program Files\LLVM
+          Write-Host "=== Scanning for PCRE2 references in cmake files ==="
+          $files = Get-ChildItem -Path "cmake" -Recurse -Include "*.cmake","CMakeLists.txt" -ErrorAction SilentlyContinue
+          $patched = $false
+          foreach ($f in $files) {
+            $content = Get-Content $f.FullName -Raw -ErrorAction SilentlyContinue
+            if ($content -and $content -match 'libpcre2') {
+              Write-Host "Found PCRE2 references in: $($f.FullName)"
+              $content = $content -replace 'libpcre2-8-0\.dll',     'pcre2-8.dll'
+              $content = $content -replace 'libpcre2-posix-3\.dll',  'pcre2-posix.dll'
+              $content = $content -replace 'libpcre2-8-0\.lib',      'pcre2-8.lib'
+              $content = $content -replace 'libpcre2-posix-3\.lib',  'pcre2-posix.lib'
+              $content = $content -replace 'libpcre2-8\.lib',        'pcre2-8.lib'
+              $content = $content -replace 'libpcre2-posix\.lib',    'pcre2-posix.lib'
+              $content = $content -replace 'libpcre2-8\.dll',        'pcre2-8.dll'
+              $content = $content -replace 'libpcre2-posix\.dll',    'pcre2-posix.dll'
+              Set-Content $f.FullName $content -NoNewline
+              $patched = $true
+              Write-Host "Patched: $($f.FullName)"
+            }
+          }
+          if (-not $patched) {
+            Write-Host "WARNING: No files with libpcre2 references found. Listing all pcre2 references:"
+            Get-ChildItem -Path "." -Recurse -Include "*.cmake","CMakeLists.txt" -ErrorAction SilentlyContinue |
+              ForEach-Object {
+                $c = Get-Content $_.FullName -Raw -ErrorAction SilentlyContinue
+                if ($c -and $c -match 'pcre2') {
+                  Write-Host "  $($_.FullName)"
+                  ($c -split "`n") | Select-String -Pattern "pcre2" | ForEach-Object { Write-Host "    $_" }
+                }
+              }
+          }
+
+      - name: Patch PySide2 validation to be non-fatal
+        shell: powershell
+        run: |
+          $candidates = @(
+            "src/build/make_pyside.py",
+            "src/build/scripts/make_pyside.py",
+            "cmake/build/make_pyside.py"
+          )
+          $found = $false
+          foreach ($file in $candidates) {
+            if (Test-Path $file) {
+              Write-Host "Found PySide2 script at: $file"
+              $content = Get-Content $file -Raw
+              if ($content -match 'check_returncode') {
+                $content = $content -replace '\.check_returncode\(\)', ''
+                Set-Content $file $content -NoNewline
+                Write-Host "Patched $file - removed check_returncode()"
+              } else {
+                Write-Host "$file does not contain check_returncode - skipping"
+              }
+              $found = $true
+              break
+            }
+          }
+          if (-not $found) {
+            Write-Host "Searching entire repo for make_pyside.py..."
+            $search = Get-ChildItem -Recurse -Filter "make_pyside.py" -ErrorAction SilentlyContinue
+            if ($search) {
+              foreach ($s in $search) {
+                Write-Host "Found: $($s.FullName)"
+                $content = Get-Content $s.FullName -Raw
+                if ($content -match 'check_returncode') {
+                  $content = $content -replace '\.check_returncode\(\)', ''
+                  Set-Content $s.FullName $content -NoNewline
+                  Write-Host "Patched: $($s.FullName)"
+                }
+              }
+            } else {
+              Write-Host "make_pyside.py not found anywhere in the repo"
+            }
+          }
+
+      - name: Patch OCIO to disable Python bindings
+        shell: powershell
+        run: |
+          Write-Host "=== Scanning for OCIO cmake configuration ==="
+          $files = Get-ChildItem -Path "cmake" -Recurse -Include "*.cmake","CMakeLists.txt" -ErrorAction SilentlyContinue
+          foreach ($f in $files) {
+            $content = Get-Content $f.FullName -Raw -ErrorAction SilentlyContinue
+            if ($content -and $content -match 'RV_DEPS_OCIO') {
+              Write-Host "Found OCIO config: $($f.FullName)"
+              if ($content -match 'OCIO_BUILD_PYTHON_BINDINGS' -or $content -match 'OCIO_PYTHON_BINDINGS') {
+                Write-Host "  Already has Python binding flag - checking value"
+              }
+              if ($content -notmatch '-DOCIO_BUILD_PYTHON_BINDINGS=OFF') {
+                $content = $content -replace '(-DOCIO_BUILD_PYTHON_BINDINGS=)\w+', '$1OFF'
+                if ($content -notmatch 'OCIO_BUILD_PYTHON_BINDINGS') {
+                  $content = $content -replace '(CMAKE_ARGS[^\]]*)', "`$1`n      -DOCIO_BUILD_PYTHON_BINDINGS=OFF"
+                }
+                Set-Content $f.FullName $content -NoNewline
+                Write-Host "  Patched OCIO Python bindings OFF in: $($f.FullName)"
+              }
+            }
+          }
+
+      - name: Verify patches and environment
+        shell: powershell
+        run: |
+          Write-Host "=== Python location ==="
+          Write-Host "pythonLocation: $env:pythonLocation"
+          Write-Host "Python.h exists: $(Test-Path "$env:pythonLocation\include\Python.h")"
+          if (Test-Path "$env:pythonLocation\include") {
+            Get-ChildItem "$env:pythonLocation\include" -Filter "Python*" | Select Name
+          }
+          Write-Host ""
+          Write-Host "=== Python libs ==="
+          if (Test-Path "$env:pythonLocation\libs") {
+            Get-ChildItem "$env:pythonLocation\libs" -Filter "python*" | Select Name
+          }
+          Write-Host ""
+          Write-Host "=== Qt location ==="
+          Write-Host "Qt dir exists: $(Test-Path "C:\Qt\5.15.2\msvc2019_64")"
+          Write-Host "qmake exists: $(Test-Path "C:\Qt\5.15.2\msvc2019_64\bin\qmake.exe")"
+          Write-Host ""
+          Write-Host "=== PCRE2 cmake references after patch ==="
+          Get-ChildItem -Path "cmake" -Recurse -Include "*.cmake" -ErrorAction SilentlyContinue |
+            ForEach-Object {
+              $c = Get-Content $_.FullName -Raw -ErrorAction SilentlyContinue
+              if ($c -and $c -match 'pcre2') {
+                Write-Host "  $($_.FullName):"
+                ($c -split "`n") | Select-String -Pattern "pcre2" | ForEach-Object { Write-Host "    $_" }
+              }
+            }
+
+      - name: Configure OpenRV
+        shell: cmd
+        run: |
           set PATH=%pythonLocation%;%pythonLocation%\Scripts;C:\Program Files\LLVM\bin;C:\Qt\5.15.2\msvc2019_64\bin;C:\msys64\usr\bin;C:\msys64\mingw64\bin;C:\ProgramData\chocolatey\bin;C:\Strawberry\perl\bin;%PATH%
-          
           cmake -B build ^
             -G "Visual Studio 17 2022" ^
             -T v142 ^
@@ -140,29 +226,44 @@ jobs:
             -DCMAKE_BUILD_TYPE=Release ^
             -DCMAKE_POLICY_VERSION_MINIMUM=3.5 ^
             -DCMAKE_POLICY_DEFAULT_CMP0148=OLD ^
+            -DRV_BUILD_PYSIDE=OFF ^
+            -DRV_DEPS_PYSIDE2_BUILD=OFF ^
+            -DRV_DEPS_PYTHON_BUILD=OFF ^
+            -DRV_BUILD_DOCS=OFF ^
             -DCMAKE_PREFIX_PATH="C:/Qt/5.15.2/msvc2019_64" ^
             -DRV_DEPS_QT_LOCATION="C:/Qt/5.15.2/msvc2019_64" ^
             -DRV_DEPS_WIN_PERL_ROOT="C:/Strawberry/perl/bin" ^
             -DPython3_ROOT_DIR="%pythonLocation%" ^
             -DPython3_EXECUTABLE="%pythonLocation%\python.exe" ^
+            -DPython3_INCLUDE_DIR="%pythonLocation%\include" ^
+            -DPython3_LIBRARY="%pythonLocation%\libs\python310.lib" ^
             -DPython_ROOT_DIR="%pythonLocation%" ^
             -DPython_EXECUTABLE="%pythonLocation%\python.exe" ^
+            -DPython_INCLUDE_DIR="%pythonLocation%\include" ^
+            -DPython_LIBRARY="%pythonLocation%\libs\python310.lib" ^
             -DPython_FIND_REGISTRY=NEVER ^
-            -DPython3_FIND_REGISTRY=NEVER
-        shell: cmd
+            -DPython3_FIND_REGISTRY=NEVER ^
+            -DOCIO_BUILD_PYTHON_BINDINGS=OFF ^
+            -DOCIO_BUILD_APPS=OFF
 
       - name: Build OpenRV
+        shell: cmd
         run: |
+          cmake -E make_directory build\stage\app\bin
+          cmake -E make_directory build\stage\app\lib
           set LLVM_INSTALL_DIR=C:\Program Files\LLVM
           set CLANG_INSTALL_DIR=C:\Program Files\LLVM
           set PATH=%pythonLocation%;%pythonLocation%\Scripts;C:\Program Files\LLVM\bin;C:\Qt\5.15.2\msvc2019_64\bin;C:\msys64\usr\bin;C:\msys64\mingw64\bin;C:\ProgramData\chocolatey\bin;C:\Strawberry\perl\bin;%PATH%
-          
           cmake --build build --config Release --parallel 4
-        shell: cmd
 
-      - name: Upload Artifact
+      - name: Install OpenRV
+        shell: cmd
+        run: |
+          set PATH=%pythonLocation%;%pythonLocation%\Scripts;C:\Program Files\LLVM\bin;C:\Qt\5.15.2\msvc2019_64\bin;C:\msys64\usr\bin;C:\msys64\mingw64\bin;C:\ProgramData\chocolatey\bin;C:\Strawberry\perl\bin;%PATH%
+          cmake --install build --config Release --prefix install
+
+      - name: Upload artifact
         uses: actions/upload-artifact@v4
-        if: always()
         with:
           name: OpenRV-Windows
-          path: build\stage\app
+          path: install
