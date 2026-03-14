@@ -1,0 +1,39 @@
+name: Claude Build Assistant
+
+on:
+  push:
+  pull_request:
+
+jobs:
+  review-build:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Run build
+        run: |
+          mkdir build
+          cd build
+          cmake ..
+          make 2>&1 | tee build.log || true
+
+      - name: Send build log to Claude
+        run: |
+          # Use jq to safely read the log file and construct a valid JSON payload
+          jq -Rs --arg prompt "Analyze this OpenRV build log and suggest fixes:\n\n" \
+          '{
+            "model": "claude-opus-4-6-thinking",
+            "messages": [
+              {
+                "role": "user",
+                "content": ($prompt + .)
+              }
+            ]
+          }' build/build.log > payload.json
+          
+          # Send the safely escaped JSON file
+          curl https://YOUR_ENDPOINT/v1/chat/completions \
+          -H "Content-Type: application/json" \
+          -H "Authorization: Bearer dummy" \
+          -d @payload.json
