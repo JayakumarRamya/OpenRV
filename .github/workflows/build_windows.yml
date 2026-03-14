@@ -26,7 +26,7 @@ jobs:
         uses: actions/cache@v4
         with:
           path: build
-          key: openrv-${{ runner.os }}-v8-${{ hashFiles('CMakeLists.txt') }}
+          key: openrv-${{ runner.os }}-v9-${{ hashFiles('CMakeLists.txt') }}
 
       - name: Setup MSVC
         uses: ilammy/msvc-dev-cmd@v1
@@ -86,134 +86,88 @@ jobs:
         run: |
           C:\msys64\usr\bin\pacman.exe -Sy --noconfirm base-devel autotools gettext-devel gperf nasm
 
-      - name: Diagnose PCRE2 cmake configuration
+      # ============================================================
+      #  FIX 1 (CRITICAL): PCRE2 - enable shared library build
+      #  Without this, no DLLs are produced and the copy fails
+      # ============================================================
+      - name: "FIX: PCRE2 - enable shared libraries"
         shell: powershell
         run: |
-          Write-Host "=== Finding all PCRE2-related cmake files ==="
-          Get-ChildItem -Path "cmake" -Recurse -Include "*.cmake","CMakeLists.txt" -ErrorAction SilentlyContinue | ForEach-Object {
+          Write-Host "=== Scanning cmake for PCRE2 configuration ==="
+          $fixed = $false
+          Get-ChildItem -Path "cmake" -Recurse -Include "*.cmake","CMakeLists.txt" | ForEach-Object {
             $content = Get-Content $_.FullName -Raw -ErrorAction SilentlyContinue
             if ($content -and $content -match '(?i)pcre2') {
-              Write-Host "`n============================================"
-              Write-Host "FILE: $($_.FullName)"
-              Write-Host "============================================"
-              Get-Content $_.FullName
-            }
-          }
-
-      - name: Patch PCRE2 to build shared libraries
-        shell: powershell
-        run: |
-          Write-Host "=== Patching PCRE2 cmake to enable shared library build ==="
-          $patched = $false
-          Get-ChildItem -Path "cmake" -Recurse -Include "*.cmake","CMakeLists.txt" -ErrorAction SilentlyContinue | ForEach-Object {
-            $content = Get-Content $_.FullName -Raw -ErrorAction SilentlyContinue
-            if ($content -and $content -match '(?i)pcre2') {
+              Write-Host "`nFOUND: $($_.FullName)"
               $original = $content
 
-              # Fix 1: Change --disable-shared to --enable-shared (autotools)
-              if ($content -match '--disable-shared') {
-                $content = $content -replace '--disable-shared', '--enable-shared'
-                Write-Host "Replaced --disable-shared with --enable-shared in $($_.FullName)"
+              # Autotools: flip --disable-shared to --enable-shared
+              $content = $content -replace '--disable-shared', '--enable-shared'
+
+              # If has --enable-static but no --enable-shared, add it
+              if ($content -match '--enable-static' -and $content -notmatch '--enable-shared') {
+                $content = $content -replace '--enable-static', '--enable-shared --enable-static'
               }
 
-              # Fix 2: If --enable-shared is still missing but configure is present, add it
-              if ($content -match 'configure' -and $content -notmatch '--enable-shared') {
-                $content = $content -replace '(--enable-static)', '--enable-shared --enable-static'
-                Write-Host "Added --enable-shared alongside --enable-static in $($_.FullName)"
-              }
-
-              # Fix 3: If using CMake-based PCRE2 build, ensure BUILD_SHARED_LIBS=ON
-              if ($content -match 'CMAKE_ARGS' -and $content -match '(?i)pcre2') {
-                if ($content -match 'BUILD_SHARED_LIBS\s*(=|:)\s*(OFF|FALSE|0)') {
-                  $content = $content -replace '(BUILD_SHARED_LIBS\s*(=|:)\s*)(OFF|FALSE|0)', '${1}ON'
-                  Write-Host "Changed BUILD_SHARED_LIBS to ON in $($_.FullName)"
-                }
-                if ($content -notmatch 'BUILD_SHARED_LIBS') {
-                  $content = $content -replace '(CMAKE_ARGS)', '${1} -DBUILD_SHARED_LIBS=ON'
-                  Write-Host "Added BUILD_SHARED_LIBS=ON in $($_.FullName)"
-                }
-              }
+              # CMake-based: flip BUILD_SHARED_LIBS OFF to ON
+              $content = $content -replace '(BUILD_SHARED_LIBS[=:]\s*)(OFF|FALSE|0)', '${1}ON'
 
               if ($content -ne $original) {
                 Set-Content $_.FullName $content -NoNewline
-                $patched = $true
-                Write-Host "`n--- Patched file content ---"
-                Get-Content $_.FullName
+                Write-Host "PATCHED: $($_.FullName)"
+                $fixed = $true
               }
+
+              # Show relevant lines
+              ($content -split "`n") | Where-Object { $_ -match '(?i)(shared|static|pcre2|configure)' } |
+                ForEach-Object { Write-Host "  $_" }
             }
           }
-          if (-not $patched) {
-            Write-Host "WARNING: Could not find PCRE2 configure flags to patch!"
+          if (-not $fixed) {
+            Write-Host "WARNING: No PCRE2 shared library flags found to patch"
           }
 
-      - name: Patch OCIO to disable Python bindings
+      # ============================================================
+      #  FIX 2 (CRITICAL): OCIO - disable Python bindings
+      #  Python.h is missing for the ExternalProject sub-build
+      # ============================================================
+      - name: "FIX: OCIO - disable Python bindings"
         shell: powershell
         run: |
-          Get-ChildItem -Path "cmake" -Recurse -Include "*.cmake","CMakeLists.txt" -ErrorAction SilentlyContinue | ForEach-Object {
+          Get-ChildItem -Path "cmake" -Recurse -Include "*.cmake","CMakeLists.txt" | ForEach-Object {
             $content = Get-Content $_.FullName -Raw -ErrorAction SilentlyContinue
             if ($content -and $content -match '(?i)RV_DEPS_OCIO') {
-              Write-Host "Found OCIO config: $($_.FullName)"
               $original = $content
 
+              # Turn off existing Python binding flag
               $content = $content -replace '(-DOCIO_BUILD_PYTHON_BINDINGS=)\w+', '${1}OFF'
 
+              # If no flag exists, inject it into CMAKE_ARGS
               if ($content -notmatch 'OCIO_BUILD_PYTHON_BINDINGS') {
                 $content = $content -replace '(CMAKE_ARGS)', '${1} -DOCIO_BUILD_PYTHON_BINDINGS=OFF'
               }
 
               if ($content -ne $original) {
                 Set-Content $_.FullName $content -NoNewline
-                Write-Host "Patched OCIO Python bindings OFF"
+                Write-Host "PATCHED OCIO: $($_.FullName)"
               }
             }
           }
 
-      - name: Patch PySide2 validation to be non-fatal
+      # ============================================================
+      #  FIX 3 (MODERATE): PySide2 - make validation non-fatal
+      #  Build has PySide OFF but staging still tests imports
+      # ============================================================
+      - name: "FIX: PySide2 - skip import validation"
         shell: powershell
         run: |
-          $found = $false
           Get-ChildItem -Recurse -Filter "make_pyside.py" -ErrorAction SilentlyContinue | ForEach-Object {
             Write-Host "Found: $($_.FullName)"
             $content = Get-Content $_.FullName -Raw
             if ($content -match 'check_returncode') {
-              $content = $content -replace '\.check_returncode\(\)', '  # check_returncode disabled for CI'
+              $content = $content -replace '\.check_returncode\(\)', '  # disabled for CI'
               Set-Content $_.FullName $content -NoNewline
-              Write-Host "Patched: removed check_returncode()"
-              $found = $true
-            }
-          }
-          if (-not $found) {
-            Write-Host "make_pyside.py not found or no check_returncode to patch"
-          }
-
-      - name: Verify all patches
-        shell: powershell
-        run: |
-          Write-Host "=== Python environment ==="
-          Write-Host "pythonLocation: $env:pythonLocation"
-          Write-Host "Python.h exists: $(Test-Path "$env:pythonLocation\include\Python.h")"
-          if (Test-Path "$env:pythonLocation\libs") {
-            Get-ChildItem "$env:pythonLocation\libs" -Filter "python*" | ForEach-Object { Write-Host "  $($_.Name)" }
-          }
-
-          Write-Host "`n=== Qt environment ==="
-          Write-Host "Qt exists: $(Test-Path 'C:\Qt\5.15.2\msvc2019_64\bin\qmake.exe')"
-
-          Write-Host "`n=== PCRE2 cmake after patch ==="
-          Get-ChildItem -Path "cmake" -Recurse -Include "*.cmake","CMakeLists.txt" -ErrorAction SilentlyContinue | ForEach-Object {
-            $c = Get-Content $_.FullName -Raw -ErrorAction SilentlyContinue
-            if ($c -and $c -match '(?i)pcre2') {
-              Write-Host "`nFILE: $($_.FullName)"
-              ($c -split "`n") | Where-Object { $_ -match '(?i)(pcre2|shared|disable|enable)' } | ForEach-Object { Write-Host "  $_" }
-            }
-          }
-
-          Write-Host "`n=== OCIO cmake after patch ==="
-          Get-ChildItem -Path "cmake" -Recurse -Include "*.cmake","CMakeLists.txt" -ErrorAction SilentlyContinue | ForEach-Object {
-            $c = Get-Content $_.FullName -Raw -ErrorAction SilentlyContinue
-            if ($c -and $c -match '(?i)OCIO.*python|python.*OCIO') {
-              Write-Host "FILE: $($_.FullName)"
-              ($c -split "`n") | Where-Object { $_ -match '(?i)python' } | ForEach-Object { Write-Host "  $_" }
+              Write-Host "PATCHED: removed check_returncode()"
             }
           }
 
@@ -248,75 +202,6 @@ jobs:
             -DOCIO_BUILD_PYTHON_BINDINGS=OFF ^
             -DOCIO_BUILD_APPS=OFF
 
-      - name: Create PCRE2 fallback script
-        shell: powershell
-        run: |
-          $script = @'
-          $pcre2Install = "D:\a\OpenRV\OpenRV\build\RV_DEPS_PCRE2\install"
-          $pcre2Src = "D:\a\OpenRV\OpenRV\build\RV_DEPS_PCRE2\src"
-          $stageDir = "D:\a\OpenRV\OpenRV\build\stage\app\bin"
-
-          New-Item -ItemType Directory -Force -Path "$pcre2Install\bin" | Out-Null
-          New-Item -ItemType Directory -Force -Path $stageDir | Out-Null
-
-          $dll1 = "$pcre2Install\bin\libpcre2-8-0.dll"
-          $dll2 = "$pcre2Install\bin\libpcre2-posix-3.dll"
-
-          Write-Host "Checking for PCRE2 DLLs..."
-          Write-Host "  dll1 exists: $(Test-Path $dll1)"
-          Write-Host "  dll2 exists: $(Test-Path $dll2)"
-
-          # List what actually exists in install dir
-          Write-Host "`nContents of PCRE2 install:"
-          if (Test-Path $pcre2Install) {
-            Get-ChildItem -Recurse $pcre2Install | ForEach-Object { Write-Host "  $($_.FullName)" }
-          }
-
-          if (!(Test-Path $dll1) -or !(Test-Path $dll2)) {
-              Write-Host "`nPCRE2 DLLs missing - rebuilding with shared libraries via MSYS2..."
-
-              $env:PATH = "C:\msys64\usr\bin;C:\msys64\mingw64\bin;$env:PATH"
-              $env:MSYSTEM = "MSYS"
-
-              if (Test-Path $pcre2Src) {
-                  $srcPath = $pcre2Src -replace '\\','/'
-                  $installPath = $pcre2Install -replace '\\','/'
-
-                  & C:\msys64\usr\bin\bash.exe -lc @"
-          cd '$srcPath'
-          echo 'Reconfiguring PCRE2 with shared libraries...'
-          ./configure --prefix='$installPath' --enable-shared --enable-static --enable-pcre2-8 --enable-pcre2-16 --enable-pcre2-32
-          make clean
-          make -j4
-          make install
-          echo 'Done rebuilding PCRE2'
-          ls -la '$installPath/bin/'
-          "@
-              } else {
-                  Write-Host "PCRE2 source dir not found: $pcre2Src"
-              }
-          }
-
-          # Final verify
-          Write-Host "`n=== Final PCRE2 status ==="
-          if (Test-Path $dll1) {
-              Write-Host "OK: $dll1"
-              Copy-Item $dll1 $stageDir -Force
-              Write-Host "Copied to $stageDir"
-          } else {
-              Write-Host "STILL MISSING: $dll1"
-          }
-          if (Test-Path $dll2) {
-              Write-Host "OK: $dll2"
-              Copy-Item $dll2 $stageDir -Force
-              Write-Host "Copied to $stageDir"
-          } else {
-              Write-Host "STILL MISSING: $dll2"
-          }
-          '@
-          Set-Content "fix_pcre2.ps1" $script -Encoding UTF8
-          Write-Host "Created fix_pcre2.ps1 fallback script"
-
       - name: Build OpenRV
         id: build
         continue-on-error: true
@@ -332,14 +217,51 @@ jobs:
           type build.log
           exit /b %BUILD_EXIT%
 
-      - name: PCRE2 fallback rebuild if build failed
+      - name: "FALLBACK: Rebuild PCRE2 with shared libs if missing"
         if: steps.build.outcome == 'failure'
         shell: powershell
         run: |
-          Write-Host "=== Running PCRE2 fallback rebuild ==="
-          powershell -ExecutionPolicy Bypass -File fix_pcre2.ps1
+          $pcre2Install = "D:\a\OpenRV\OpenRV\build\RV_DEPS_PCRE2\install"
+          $pcre2Src = "D:\a\OpenRV\OpenRV\build\RV_DEPS_PCRE2\src"
+          $stageDir = "D:\a\OpenRV\OpenRV\build\stage\app\bin"
 
-      - name: Retry build after PCRE2 fix
+          New-Item -ItemType Directory -Force -Path "$pcre2Install\bin" | Out-Null
+          New-Item -ItemType Directory -Force -Path $stageDir | Out-Null
+
+          $dll1 = "$pcre2Install\bin\libpcre2-8-0.dll"
+          $dll2 = "$pcre2Install\bin\libpcre2-posix-3.dll"
+
+          Write-Host "=== Current PCRE2 install contents ==="
+          if (Test-Path $pcre2Install) {
+            Get-ChildItem -Recurse $pcre2Install | ForEach-Object { Write-Host "  $($_.FullName)" }
+          }
+
+          if (!(Test-Path $dll1) -or !(Test-Path $dll2)) {
+            Write-Host "`nDLLs missing. Rebuilding PCRE2 with --enable-shared..."
+
+            $env:PATH = "C:\msys64\usr\bin;C:\msys64\mingw64\bin;$env:PATH"
+
+            if (Test-Path $pcre2Src) {
+              $srcPath = ($pcre2Src -replace '\\','/') -replace '^D:','/d'
+              $installPath = ($pcre2Install -replace '\\','/') -replace '^D:','/d'
+
+              & C:\msys64\usr\bin\bash.exe -lc "cd '$srcPath' && ./configure --prefix='$installPath' --enable-shared --enable-static --enable-pcre2-8 --enable-pcre2-16 --enable-pcre2-32 && make clean && make -j4 && make install && echo '=== Installed ===' && ls -la '$installPath/bin/' '$installPath/lib/'"
+            }
+
+            # Copy DLLs to staging
+            if (Test-Path $dll1) {
+              Copy-Item $dll1 $stageDir -Force
+              Write-Host "Copied $dll1 to staging"
+            }
+            if (Test-Path $dll2) {
+              Copy-Item $dll2 $stageDir -Force
+              Write-Host "Copied $dll2 to staging"
+            }
+          } else {
+            Write-Host "PCRE2 DLLs already exist - no rebuild needed"
+          }
+
+      - name: "RETRY: Build OpenRV after fixes"
         id: build_retry
         if: steps.build.outcome == 'failure'
         continue-on-error: true
@@ -354,73 +276,60 @@ jobs:
           exit /b %BUILD_EXIT%
 
       - name: Extract errors from build log
-        if: steps.build.outcome == 'failure' || steps.build_retry.outcome == 'failure'
+        if: steps.build.outcome == 'failure'
         shell: powershell
         run: |
           $logFile = if (Test-Path "build_retry.log") { "build_retry.log" } else { "build.log" }
-          if (Test-Path $logFile) {
-            $log = Get-Content $logFile
-            $totalLines = $log.Count
-            Write-Host "=== BUILD LOG: $totalLines total lines from $logFile ==="
+          if (!(Test-Path $logFile)) { Write-Host "No log found"; exit 0 }
 
-            Write-Host "`n=========================================="
-            Write-Host "  SECTION 1: ALL ERRORS (filtered)"
-            Write-Host "==========================================`n"
-            $log | Select-String -Pattern "(?i)(^.*error\s+(C|MSB|LNK)\d+.*$|^.*error:.*$|^.*fatal error.*$|^.*Error copying.*$|^.*exited with code [^0].*$)" |
-              ForEach-Object {
-                Write-Host $_.Line
-              }
+          $log = Get-Content $logFile
+          Write-Host "=== $($log.Count) total lines in $logFile ===`n"
 
-            Write-Host "`n=========================================="
-            Write-Host "  SECTION 2: FAILED TARGETS"
-            Write-Host "==========================================`n"
-            $log | Select-String -Pattern "(?i)(Build FAILED|exited with code|CUSTOMBUILD.*error|error MSB)" |
-              ForEach-Object {
-                Write-Host $_.Line
-              }
+          Write-Host "=========================================="
+          Write-Host "  ALL ERRORS"
+          Write-Host "==========================================`n"
+          $log | Select-String -Pattern "(?i)(error\s+(C|MSB|LNK)\d+|fatal error|Error copying|exited with code [^0])" |
+            ForEach-Object { Write-Host $_.Line }
 
-            Write-Host "`n=========================================="
-            Write-Host "  SECTION 3: FIRST 5 ERRORS WITH CONTEXT"
-            Write-Host "==========================================`n"
-            $errorLines = @()
-            for ($i = 0; $i -lt $log.Count; $i++) {
-              if ($log[$i] -match '(?i)(error\s+(C|MSB|LNK)\d+|fatal error|Error copying)') {
-                $errorLines += $i
-              }
+          Write-Host "`n=========================================="
+          Write-Host "  FIRST 5 ERRORS WITH CONTEXT (+-10 lines)"
+          Write-Host "==========================================`n"
+          $errorLineNums = @()
+          for ($i = 0; $i -lt $log.Count; $i++) {
+            if ($log[$i] -match '(?i)(error\s+(C|MSB|LNK)\d+|fatal error|Error copying)') {
+              $errorLineNums += $i
             }
-            $shown = 0
-            foreach ($lineNum in $errorLines) {
-              if ($shown -ge 5) { break }
-              $start = [Math]::Max(0, $lineNum - 10)
-              $end = [Math]::Min($log.Count - 1, $lineNum + 5)
-              Write-Host "--- Error at line $lineNum ---"
-              for ($i = $start; $i -le $end; $i++) {
-                $prefix = if ($i -eq $lineNum) { ">>>" } else { "   " }
-                Write-Host "$prefix [$i] $($log[$i])"
-              }
-              Write-Host ""
-              $shown++
+          }
+          $shown = 0
+          foreach ($ln in $errorLineNums) {
+            if ($shown -ge 5) { break }
+            $s = [Math]::Max(0, $ln - 10)
+            $e = [Math]::Min($log.Count - 1, $ln + 5)
+            Write-Host "--- Error at line $ln ---"
+            for ($i = $s; $i -le $e; $i++) {
+              $pfx = if ($i -eq $ln) { ">>>" } else { "   " }
+              Write-Host "$pfx [$i] $($log[$i])"
             }
-
-            Write-Host "`n=========================================="
-            Write-Host "  SECTION 4: LAST 200 LINES"
-            Write-Host "==========================================`n"
-            $log | Select-Object -Last 200 | ForEach-Object { Write-Host $_ }
-          } else {
-            Write-Host "No build log found!"
+            Write-Host ""
+            $shown++
           }
 
-      - name: Upload build log on failure
-        if: steps.build.outcome == 'failure' || steps.build_retry.outcome == 'failure'
+          Write-Host "`n=========================================="
+          Write-Host "  LAST 200 LINES"
+          Write-Host "==========================================`n"
+          $log | Select-Object -Last 200 | ForEach-Object { Write-Host $_ }
+
+      - name: Upload build logs on failure
+        if: steps.build.outcome == 'failure'
         uses: actions/upload-artifact@v4
         with:
-          name: build-logs-failed
+          name: build-logs
           path: |
             build.log
             build_retry.log
           retention-days: 5
 
-      - name: Fail if both builds failed
+      - name: Stop if both builds failed
         if: steps.build.outcome == 'failure' && steps.build_retry.outcome == 'failure'
         run: exit 1
 
