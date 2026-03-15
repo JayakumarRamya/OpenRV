@@ -199,7 +199,8 @@ runs:
       run: |
         cmake --version
         export QT_HOME=c:/Qt/${{ inputs.qt-version }}/msvc2019_64
-        cmake -B _build -G "Visual Studio 17 2022" -A x64 -DRV_DEPS_WIN_PERL_ROOT=c:/Strawberry/perl/bin -DCMAKE_BUILD_TYPE=${{ inputs.build-type }} -DRV_DEPS_QT_LOCATION=$QT_HOME -DRV_VFX_PLATFORM=${{ inputs.vfx-platform }} -DRV_FFMPEG_NON_FREE_DECODERS_TO_ENABLE="aac;ac3;h264;hevc;mpeg4;mpeg2video;prores;vp9" -DRV_FFMPEG_NON_FREE_ENCODERS_TO_ENABLE="aac;ac3;h264;hevc;mpeg4;prores"
+        export MSYS2_ARG_CONV_EXCL="*"
+        cmake -B _build -G "Visual Studio 17 2022" -A x64 -DRV_DEPS_WIN_PERL_ROOT=c:/Strawberry/perl/bin -DCMAKE_BUILD_TYPE=${{ inputs.build-type }} -DRV_DEPS_QT_LOCATION=$QT_HOME -DRV_VFX_PLATFORM=${{ inputs.vfx-platform }} -DRV_FFMPEG_NON_FREE_DECODERS_TO_ENABLE="aac;ac3;h264;hevc;mpeg4;mpeg2video;prores;vp9" -DRV_FFMPEG_NON_FREE_ENCODERS_TO_ENABLE="aac;ac3;mpeg4;prores"
       shell: msys2 {0}
 
     - name: Configure OpenRV
@@ -207,7 +208,8 @@ runs:
       run: |
         cmake --version
         export QT_HOME=c:/Qt/${{ inputs.qt-version }}/msvc2019_64
-        cmake -B _build -G "Visual Studio 17 2022" -A x64 -DRV_DEPS_WIN_PERL_ROOT=c:/Strawberry/perl/bin -DCMAKE_BUILD_TYPE=${{ inputs.build-type }} -DRV_DEPS_QT_LOCATION=$QT_HOME -DRV_VFX_PLATFORM=${{ inputs.vfx-platform }} -DRV_FFMPEG_NON_FREE_DECODERS_TO_ENABLE="aac;ac3;h264;hevc;mpeg4;mpeg2video;prores;vp9" -DRV_FFMPEG_NON_FREE_ENCODERS_TO_ENABLE="aac;ac3;h264;hevc;mpeg4;prores"
+        export MSYS2_ARG_CONV_EXCL="*"
+        cmake -B _build -G "Visual Studio 17 2022" -A x64 -DRV_DEPS_WIN_PERL_ROOT=c:/Strawberry/perl/bin -DCMAKE_BUILD_TYPE=${{ inputs.build-type }} -DRV_DEPS_QT_LOCATION=$QT_HOME -DRV_VFX_PLATFORM=${{ inputs.vfx-platform }} -DRV_FFMPEG_NON_FREE_DECODERS_TO_ENABLE="aac;ac3;h264;hevc;mpeg4;mpeg2video;prores;vp9" -DRV_FFMPEG_NON_FREE_ENCODERS_TO_ENABLE="aac;ac3;mpeg4;prores"
       shell: msys2 {0}
 
     - name: Build OpenRV dependencies
