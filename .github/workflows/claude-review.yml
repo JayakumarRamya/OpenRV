@@ -1,4 +1,4 @@
-name: OpenRV Windows
+name: OpenRV Windows FFMEG
 
 on:
   workflow_dispatch:
