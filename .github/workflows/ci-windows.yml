@@ -15,345 +15,172 @@ on:
         type: string
         default: 'true'
 
-# ─────────────────────────────────────────────────────────────────────────────
-# Global defaults applied to every job
-# ─────────────────────────────────────────────────────────────────────────────
-defaults:
-  run:
-    shell: pwsh
-
 jobs:
 
-  # ───────────────────────────────────────────────────────────────────────────
-  # PRIMARY RELEASE BUILD  (CY2024 / Qt6 / Python 3.11)
-  # ───────────────────────────────────────────────────────────────────────────
   windows-pr:
-    name: >-
-      Windows ${{ matrix.vfx-platform }}
-      <os=${{ matrix.os }},
+    name: 'Windows ${{ matrix.vfx-platform }}
+      <${{ matrix.os }}
        msvc=${{ matrix.msvc-component }},
        qt=${{ matrix.qt-version }},
        python=${{ matrix.python-version }},
        cmake=${{ matrix.cmake-version }},
        arch=${{ matrix.arch-type }},
-       config=${{ matrix.build-type }}>
+       config=${{ matrix.build-type }}>'
 
     strategy:
       fail-fast: false
       matrix:
         include:
-          - os:              "windows-2022"
-            arch-type:       "x86_64"
-            build-type:      "Release"
-            qt-version:      "6.5.3"
-            python-version:  "3.11"
-            cmake-version:   "3.31.6"
-            vfx-platform:    "CY2024"
-            msvc-component:  "14.40.17.10.x86.x64"
-            msvc-compiler:   "14.40.33807"
+          - os: "windows-2022"
+            arch-type: "x86_64"
+            build-type: "Release"
+            qt-version: "6.5.3"
+            python-version: "3.11"
+            cmake-version: "3.31.6"
+            vfx-platform: "CY2024"
+            msvc-component: "14.40.17.10.x86.x64"
+            msvc-compiler: "14.40.33807"
 
     runs-on: ${{ matrix.os }}
-
     env:
-      SCCACHE_GHA_ENABLED:        "true"
-      SCCACHE_CACHE_SIZE:         "10G"
-      CL:                         "/MP"
-      CMAKE_BUILD_PARALLEL_LEVEL: "0"
+      SCCACHE_GHA_ENABLED: false
 
     steps:
       - name: Check out repository code
         uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd
         with:
           submodules: recursive
-          fetch-depth: 1
-
-      - name: Set up sccache
-        uses: mozilla-actions/sccache-action@v0.0.4
-
-      - name: Cache third-party dependencies
-        if: inputs.skip_deps_cache != 'true'
-        uses: actions/cache@v4
-        with:
-          path: |
-            ${{ github.workspace }}/_deps
-            ${{ github.workspace }}/_build/_deps
-          key: deps-win-${{ matrix.vfx-platform }}-${{ matrix.qt-version }}-${{ matrix.python-version }}-${{ hashFiles('**/CMakeLists.txt', '**/cmake/**') }}
-          restore-keys: |
-            deps-win-${{ matrix.vfx-platform }}-${{ matrix.qt-version }}-${{ matrix.python-version }}-
-            deps-win-${{ matrix.vfx-platform }}-${{ matrix.qt-version }}-
-            deps-win-${{ matrix.vfx-platform }}-
 
       - uses: ./.github/actions/build-windows
         with:
-          build-type:       ${{ matrix.build-type }}
-          qt-version:       ${{ matrix.qt-version }}
-          python-version:   ${{ matrix.python-version }}
-          cmake-version:    ${{ matrix.cmake-version }}
-          vfx-platform:     ${{ matrix.vfx-platform }}
-          msvc-component:   ${{ matrix.msvc-component }}
-          msvc-compiler:    ${{ matrix.msvc-compiler }}
-          qt5_modules:      ${{ inputs.qt5_modules }}
-          extra-cmake-flags: >-
-            -DCMAKE_CXX_FLAGS="/O2 /Ob2 /Oi /Ot /GL /fp:fast /arch:AVX2 /MP"
-            -DCMAKE_C_FLAGS="/O2 /Ob2 /Oi /Ot /GL /fp:fast /arch:AVX2 /MP"
-            -DCMAKE_EXE_LINKER_FLAGS="/LTCG /OPT:REF /OPT:ICF /INCREMENTAL:NO"
-            -DCMAKE_SHARED_LINKER_FLAGS="/LTCG /OPT:REF /OPT:ICF /INCREMENTAL:NO"
-            -DCMAKE_INTERPROCEDURAL_OPTIMIZATION=ON
-            -DRV_OPENEXR_ENABLE_THREADING=ON
-            -DRV_ENABLE_LARGE_FILE=ON
-            -DRV_ENABLE_HALF_FLOAT=ON
-            -DRV_FFMPEG_ENABLE_HWACCEL=ON
-            -DRV_CACHE_IO_THREADS=8
-            -DRV_CACHE_LOOKAHEAD_MB=8192
+          build-type: ${{ matrix.build-type }}
+          qt-version: ${{ matrix.qt-version }}
+          python-version: ${{ matrix.python-version }}
+          cmake-version: ${{ matrix.cmake-version }}
+          vfx-platform: ${{ matrix.vfx-platform }}
+          msvc-component: ${{ matrix.msvc-component }}
+          msvc-compiler: ${{ matrix.msvc-compiler }}
+          qt5_modules: ${{ inputs.qt5_modules }}
 
-      # ── Stage rv_prefs + Install-RVPrefs.ps1 into _install ─────────────────
-      - name: Stage rv_prefs and installer script into _install
-        run: |
-          Copy-Item -Path "${{ github.workspace }}\rv_prefs" `
-                    -Destination "${{ github.workspace }}\_install\rv_prefs" `
-                    -Force
-          Copy-Item -Path "${{ github.workspace }}\Install-RVPrefs.ps1" `
-                    -Destination "${{ github.workspace }}\_install\Install-RVPrefs.ps1" `
-                    -Force
-          Write-Host "Staged rv_prefs and Install-RVPrefs.ps1 into _install"
-
-      # ── Deploy rv_prefs on the CI runner (smoke test) ──────────────────────
-      - name: Deploy rv_prefs on CI runner
-        run: |
-          Set-ExecutionPolicy -Scope Process -ExecutionPolicy Bypass -Force
-          & "${{ github.workspace }}\_install\Install-RVPrefs.ps1" `
-              -InstallDir "${{ github.workspace }}\_install"
-
-      # ── Upload artifact (rv_prefs + script bundled inside) ─────────────────
-      - name: Upload Windows Release build
+      - name: Upload Windows build
         uses: actions/upload-artifact@v4
         with:
-          name:             openrv-windows-${{ matrix.vfx-platform }}-${{ matrix.build-type }}
-          path:             _install
-          retention-days:  14
-          compression-level: 9
+          name: openrv-windows-${{ matrix.build-type }}
+          path: _install
 
 
-  # ───────────────────────────────────────────────────────────────────────────
-  # DEBUG BUILD  (CY2024 / Qt6)
-  # ───────────────────────────────────────────────────────────────────────────
   windows-debug:
     if: ${{ inputs.run_debug == 'true' }}
 
-    name: >-
-      Windows ${{ matrix.vfx-platform }}
-      <os=${{ matrix.os }},
+    name: 'Windows ${{ matrix.vfx-platform }}
+      <${{ matrix.os }}
        msvc=${{ matrix.msvc-component }},
        qt=${{ matrix.qt-version }},
        python=${{ matrix.python-version }},
        cmake=${{ matrix.cmake-version }},
        arch=${{ matrix.arch-type }},
-       config=${{ matrix.build-type }}>
+       config=${{ matrix.build-type }}>'
 
     strategy:
       fail-fast: false
       matrix:
         include:
-          - os:              "windows-2022"
-            arch-type:       "x86_64"
-            build-type:      "Debug"
-            qt-version:      "6.5.3"
-            python-version:  "3.11"
-            cmake-version:   "3.31.6"
-            vfx-platform:    "CY2024"
-            msvc-component:  "14.40.17.10.x86.x64"
-            msvc-compiler:   "14.40.33807"
+          - os: "windows-2022"
+            arch-type: "x86_64"
+            build-type: "Debug"
+            qt-version: "6.5.3"
+            python-version: "3.11"
+            cmake-version: "3.31.6"
+            vfx-platform: "CY2024"
+            msvc-component: "14.40.17.10.x86.x64"
+            msvc-compiler: "14.40.33807"
 
     runs-on: ${{ matrix.os }}
-
     env:
-      SCCACHE_GHA_ENABLED:        "true"
-      SCCACHE_CACHE_SIZE:         "10G"
-      CL:                         "/MP"
-      CMAKE_BUILD_PARALLEL_LEVEL: "0"
+      SCCACHE_GHA_ENABLED: false
 
     steps:
       - name: Check out repository code
         uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd
         with:
           submodules: recursive
-          fetch-depth: 1
-
-      - name: Set up sccache
-        uses: mozilla-actions/sccache-action@v0.0.4
-
-      - name: Cache third-party dependencies
-        if: inputs.skip_deps_cache != 'true'
-        uses: actions/cache@v4
-        with:
-          path: |
-            ${{ github.workspace }}/_deps
-            ${{ github.workspace }}/_build/_deps
-          key: deps-win-debug-${{ matrix.vfx-platform }}-${{ matrix.qt-version }}-${{ matrix.python-version }}-${{ hashFiles('**/CMakeLists.txt', '**/cmake/**') }}
-          restore-keys: |
-            deps-win-debug-${{ matrix.vfx-platform }}-${{ matrix.qt-version }}-
-            deps-win-${{ matrix.vfx-platform }}-
 
       - uses: ./.github/actions/build-windows
         with:
-          build-type:       ${{ matrix.build-type }}
-          qt-version:       ${{ matrix.qt-version }}
-          python-version:   ${{ matrix.python-version }}
-          cmake-version:    ${{ matrix.cmake-version }}
-          vfx-platform:     ${{ matrix.vfx-platform }}
-          msvc-component:   ${{ matrix.msvc-component }}
-          msvc-compiler:    ${{ matrix.msvc-compiler }}
-          qt5_modules:      ${{ inputs.qt5_modules }}
-          extra-cmake-flags: >-
-            -DCMAKE_CXX_FLAGS="/Zi /MP /RTC1"
-            -DCMAKE_C_FLAGS="/Zi /MP /RTC1"
-            -DCMAKE_EXE_LINKER_FLAGS="/DEBUG /INCREMENTAL"
-            -DRV_OPENEXR_ENABLE_THREADING=ON
-            -DRV_ENABLE_LARGE_FILE=ON
-            -DRV_FFMPEG_ENABLE_HWACCEL=ON
+          build-type: ${{ matrix.build-type }}
+          qt-version: ${{ matrix.qt-version }}
+          python-version: ${{ matrix.python-version }}
+          cmake-version: ${{ matrix.cmake-version }}
+          vfx-platform: ${{ matrix.vfx-platform }}
+          msvc-component: ${{ matrix.msvc-component }}
+          msvc-compiler: ${{ matrix.msvc-compiler }}
+          qt5_modules: ${{ inputs.qt5_modules }}
 
-      # ── Stage rv_prefs + Install-RVPrefs.ps1 into _install ─────────────────
-      - name: Stage rv_prefs and installer script into _install
-        run: |
-          Copy-Item -Path "${{ github.workspace }}\rv_prefs" `
-                    -Destination "${{ github.workspace }}\_install\rv_prefs" `
-                    -Force
-          Copy-Item -Path "${{ github.workspace }}\Install-RVPrefs.ps1" `
-                    -Destination "${{ github.workspace }}\_install\Install-RVPrefs.ps1" `
-                    -Force
-          Write-Host "Staged rv_prefs and Install-RVPrefs.ps1 into _install"
-
-      # ── Deploy rv_prefs on the CI runner (smoke test) ──────────────────────
-      - name: Deploy rv_prefs on CI runner
-        run: |
-          Set-ExecutionPolicy -Scope Process -ExecutionPolicy Bypass -Force
-          & "${{ github.workspace }}\_install\Install-RVPrefs.ps1" `
-              -InstallDir "${{ github.workspace }}\_install"
-
-      # ── Upload artifact ─────────────────────────────────────────────────────
-      - name: Upload Windows Debug build
+      - name: Upload Windows build
         uses: actions/upload-artifact@v4
         with:
-          name:            openrv-windows-${{ matrix.vfx-platform }}-${{ matrix.build-type }}
-          path:            _install
-          retention-days: 7
+          name: openrv-windows-${{ matrix.build-type }}
+          path: _install
 
 
-  # ───────────────────────────────────────────────────────────────────────────
-  # LEGACY MATRIX  (CY2023 / Qt5 / Python 3.10) — full_matrix only
-  # ───────────────────────────────────────────────────────────────────────────
   windows-cy2023:
     if: ${{ inputs.full_matrix == 'true' }}
 
-    name: >-
-      Windows ${{ matrix.vfx-platform }}
-      <os=${{ matrix.os }},
+    name: 'Windows ${{ matrix.vfx-platform }}
+      <${{ matrix.os }}
        msvc=${{ matrix.msvc-component }},
        qt=${{ matrix.qt-version }},
        python=${{ matrix.python-version }},
        cmake=${{ matrix.cmake-version }},
        arch=${{ matrix.arch-type }},
-       config=${{ matrix.build-type }}>
+       config=${{ matrix.build-type }}>'
 
     strategy:
       fail-fast: false
       matrix:
         include:
-          - os:              "windows-2022"
-            arch-type:       "x86_64"
-            build-type:      "Release"
-            qt-version:      "5.15.2"
-            python-version:  "3.10"
-            cmake-version:   "3.31.6"
-            vfx-platform:    "CY2023"
-            msvc-component:  "14.40.17.10.x86.x64"
-            msvc-compiler:   "14.40.33807"
-          - os:              "windows-2022"
-            arch-type:       "x86_64"
-            build-type:      "Debug"
-            qt-version:      "5.15.2"
-            python-version:  "3.10"
-            cmake-version:   "3.31.6"
-            vfx-platform:    "CY2023"
-            msvc-component:  "14.40.17.10.x86.x64"
-            msvc-compiler:   "14.40.33807"
+          - os: "windows-2022"
+            arch-type: "x86_64"
+            build-type: "Release"
+            qt-version: "5.15.2"
+            python-version: "3.10"
+            cmake-version: "3.31.6"
+            vfx-platform: "CY2023"
+            msvc-component: "14.40.17.10.x86.x64"
+            msvc-compiler: "14.40.33807"
+          - os: "windows-2022"
+            arch-type: "x86_64"
+            build-type: "Debug"
+            qt-version: "5.15.2"
+            python-version: "3.10"
+            cmake-version: "3.31.6"
+            vfx-platform: "CY2023"
+            msvc-component: "14.40.17.10.x86.x64"
+            msvc-compiler: "14.40.33807"
 
     runs-on: ${{ matrix.os }}
-
     env:
-      SCCACHE_GHA_ENABLED:        "true"
-      SCCACHE_CACHE_SIZE:         "10G"
-      CL:                         "/MP"
-      CMAKE_BUILD_PARALLEL_LEVEL: "0"
+      SCCACHE_GHA_ENABLED: false
 
     steps:
       - name: Check out repository code
         uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd
         with:
           submodules: recursive
-          fetch-depth: 1
-
-      - name: Set up sccache
-        uses: mozilla-actions/sccache-action@v0.0.4
-
-      - name: Cache third-party dependencies
-        if: inputs.skip_deps_cache != 'true'
-        uses: actions/cache@v4
-        with:
-          path: |
-            ${{ github.workspace }}/_deps
-            ${{ github.workspace }}/_build/_deps
-          key: deps-win-${{ matrix.vfx-platform }}-${{ matrix.qt-version }}-${{ matrix.python-version }}-${{ hashFiles('**/CMakeLists.txt', '**/cmake/**') }}
-          restore-keys: |
-            deps-win-${{ matrix.vfx-platform }}-${{ matrix.qt-version }}-${{ matrix.python-version }}-
-            deps-win-${{ matrix.vfx-platform }}-${{ matrix.qt-version }}-
 
       - uses: ./.github/actions/build-windows
         with:
-          build-type:       ${{ matrix.build-type }}
-          qt-version:       ${{ matrix.qt-version }}
-          python-version:   ${{ matrix.python-version }}
-          cmake-version:    ${{ matrix.cmake-version }}
-          vfx-platform:     ${{ matrix.vfx-platform }}
-          msvc-component:   ${{ matrix.msvc-component }}
-          msvc-compiler:    ${{ matrix.msvc-compiler }}
-          qt5_modules:      ${{ inputs.qt5_modules }}
-          extra-cmake-flags: >-
-            -DCMAKE_CXX_FLAGS="/O2 /Ob2 /Oi /Ot /GL /fp:fast /arch:AVX2 /MP"
-            -DCMAKE_C_FLAGS="/O2 /Ob2 /Oi /Ot /GL /fp:fast /arch:AVX2 /MP"
-            -DCMAKE_EXE_LINKER_FLAGS="/LTCG /OPT:REF /OPT:ICF /INCREMENTAL:NO"
-            -DCMAKE_SHARED_LINKER_FLAGS="/LTCG /OPT:REF /OPT:ICF /INCREMENTAL:NO"
-            -DCMAKE_INTERPROCEDURAL_OPTIMIZATION=ON
-            -DRV_OPENEXR_ENABLE_THREADING=ON
-            -DRV_ENABLE_LARGE_FILE=ON
-            -DRV_ENABLE_HALF_FLOAT=ON
-            -DRV_FFMPEG_ENABLE_HWACCEL=ON
-            -DRV_CACHE_IO_THREADS=8
-            -DRV_CACHE_LOOKAHEAD_MB=8192
+          build-type: ${{ matrix.build-type }}
+          qt-version: ${{ matrix.qt-version }}
+          python-version: ${{ matrix.python-version }}
+          cmake-version: ${{ matrix.cmake-version }}
+          vfx-platform: ${{ matrix.vfx-platform }}
+          msvc-component: ${{ matrix.msvc-component }}
+          msvc-compiler: ${{ matrix.msvc-compiler }}
+          qt5_modules: ${{ inputs.qt5_modules }}
 
-      # ── Stage rv_prefs + Install-RVPrefs.ps1 into _install ─────────────────
-      - name: Stage rv_prefs and installer script into _install
-        run: |
-          Copy-Item -Path "${{ github.workspace }}\rv_prefs" `
-                    -Destination "${{ github.workspace }}\_install\rv_prefs" `
-                    -Force
-          Copy-Item -Path "${{ github.workspace }}\Install-RVPrefs.ps1" `
-                    -Destination "${{ github.workspace }}\_install\Install-RVPrefs.ps1" `
-                    -Force
-          Write-Host "Staged rv_prefs and Install-RVPrefs.ps1 into _install"
-
-      # ── Deploy rv_prefs on the CI runner (smoke test) ──────────────────────
-      - name: Deploy rv_prefs on CI runner
-        run: |
-          Set-ExecutionPolicy -Scope Process -ExecutionPolicy Bypass -Force
-          & "${{ github.workspace }}\_install\Install-RVPrefs.ps1" `
-              -InstallDir "${{ github.workspace }}\_install"
-
-      # ── Upload artifact ─────────────────────────────────────────────────────
-      - name: Upload Windows CY2023 build
+      - name: Upload Windows build
         uses: actions/upload-artifact@v4
         with:
-          name:             openrv-windows-${{ matrix.vfx-platform }}-${{ matrix.build-type }}
-          path:             _install
-          retention-days:  14
-          compression-level: 9
+          name: openrv-windows-${{ matrix.build-type }}
+          path: _install
