@@ -67,16 +67,34 @@ jobs:
             -DOPENEXR_ENABLE_THREADING=ON
             -DOPENEXR_BUILD_BOTH_STATIC_SHARED=OFF
 
-      - name: Stage rv_prefs files into _install
+      - name: Stage rv_prefs, prewarm script and plugins into _install
         shell: pwsh
         run: |
-          $dest = "${{ github.workspace }}\_install"
+          $dest      = "${{ github.workspace }}\_install"
+          $pluginSrc = "${{ github.workspace }}\rv_plugins"
+
+          # ── rv_prefs (3 GPU profiles) ──────────────────────────────────────
           Copy-Item -Path "${{ github.workspace }}\rv_prefs_NVIDIA_RTX3060"    -Destination "$dest\rv_prefs_NVIDIA_RTX3060"    -Force
           Copy-Item -Path "${{ github.workspace }}\rv_prefs_AMD_RX5700"        -Destination "$dest\rv_prefs_AMD_RX5700"        -Force
           Copy-Item -Path "${{ github.workspace }}\rv_prefs_IntelUHD770_noGPU" -Destination "$dest\rv_prefs_IntelUHD770_noGPU" -Force
+
+          # ── installer script ───────────────────────────────────────────────
           Copy-Item -Path "${{ github.workspace }}\Install-RVPrefs.ps1"        -Destination "$dest\Install-RVPrefs.ps1"        -Force
+
+          # ── prewarm cache Mu script ────────────────────────────────────────
           Copy-Item -Path "${{ github.workspace }}\rv_cache_prewarm.mu"        -Destination "$dest\rv_cache_prewarm.mu"        -Force
-          Write-Host "All rv_prefs and prewarm script staged into _install"
+
+          # ── Python plugins ─────────────────────────────────────────────────
+          # Copy entire rv_plugins folder into _install so installer can deploy
+          if (Test-Path $pluginSrc) {
+            Copy-Item -Path $pluginSrc -Destination "$dest\rv_plugins" -Recurse -Force
+            $count = (Get-ChildItem "$dest\rv_plugins" -Filter "*.py").Count
+            Write-Host "Staged $count Python plugin(s) into _install\rv_plugins"
+          } else {
+            Write-Warning "rv_plugins folder not found — skipping plugin staging"
+          }
+
+          Write-Host "All files staged into _install successfully"
 
       - name: Upload Windows build
         uses: actions/upload-artifact@v4
@@ -132,18 +150,28 @@ jobs:
           msvc-component: ${{ matrix.msvc-component }}
           msvc-compiler: ${{ matrix.msvc-compiler }}
           qt5_modules: ${{ inputs.qt5_modules }}
-          # Debug — no AVX2 flags, keep debug symbols clean
 
-      - name: Stage rv_prefs files into _install
+      - name: Stage rv_prefs, prewarm script and plugins into _install
         shell: pwsh
         run: |
-          $dest = "${{ github.workspace }}\_install"
+          $dest      = "${{ github.workspace }}\_install"
+          $pluginSrc = "${{ github.workspace }}\rv_plugins"
+
           Copy-Item -Path "${{ github.workspace }}\rv_prefs_NVIDIA_RTX3060"    -Destination "$dest\rv_prefs_NVIDIA_RTX3060"    -Force
           Copy-Item -Path "${{ github.workspace }}\rv_prefs_AMD_RX5700"        -Destination "$dest\rv_prefs_AMD_RX5700"        -Force
           Copy-Item -Path "${{ github.workspace }}\rv_prefs_IntelUHD770_noGPU" -Destination "$dest\rv_prefs_IntelUHD770_noGPU" -Force
           Copy-Item -Path "${{ github.workspace }}\Install-RVPrefs.ps1"        -Destination "$dest\Install-RVPrefs.ps1"        -Force
           Copy-Item -Path "${{ github.workspace }}\rv_cache_prewarm.mu"        -Destination "$dest\rv_cache_prewarm.mu"        -Force
-          Write-Host "All rv_prefs and prewarm script staged into _install"
+
+          if (Test-Path $pluginSrc) {
+            Copy-Item -Path $pluginSrc -Destination "$dest\rv_plugins" -Recurse -Force
+            $count = (Get-ChildItem "$dest\rv_plugins" -Filter "*.py").Count
+            Write-Host "Staged $count Python plugin(s) into _install\rv_plugins"
+          } else {
+            Write-Warning "rv_plugins folder not found — skipping plugin staging"
+          }
+
+          Write-Host "All files staged into _install successfully"
 
       - name: Upload Windows build
         uses: actions/upload-artifact@v4
