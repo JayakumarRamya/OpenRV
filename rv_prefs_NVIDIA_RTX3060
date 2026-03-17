@@ -1,0 +1,56 @@
+# =============================================================================
+#  OpenRV  —  Windows Performance Preferences
+#  Machine : Intel i9-12th Gen + NVIDIA RTX 3060 + 128 GB RAM
+#  Deploy to: %APPDATA%\RV\rv_prefs
+#  How     : Rename this file to "rv_prefs" then run Install-RVPrefs.ps1
+# =============================================================================
+
+threading.numThreads=24
+threading.ioThreads=12
+threading.decompressThreads=24
+
+cache.lookAheadCacheSize=65536
+cache.regionSize=1024
+cache.maxOpenFiles=1024
+cache.readAhead=256
+cache.bufferCount=8
+
+exr.numScanlineThreads=24
+exr.numTileThreads=24
+exr.enableDWA=true
+exr.readWindow=data
+exr.chunkSize=131072
+exr.enableMIPMap=true
+exr.halfToFloat=true
+
+movie.hwaccel=cuda
+movie.decoderThreads=12
+movie.enableHardwareDecode=true
+movie.bufferSize=134217728
+movie.probeSize=5242880
+movie.analyzeDuration=500000
+movie.fastSeek=true
+
+dpx.readThreads=12
+dpx.preloadHeaders=true
+dpx.bigEndian=auto
+
+display.vsync=false
+display.gammaCorrectionMode=GPU
+display.useOpenGL=true
+display.glFinishAfterSwap=false
+display.textureFormat=half
+display.uploadThreads=4
+
+ocio.gpuAllocation=true
+ocio.gpuTextureSize=65
+ocio.cacheAllLUTs=true
+
+audio.preloadSeconds=4.0
+audio.cacheSeconds=30.0
+
+app.showSplash=false
+app.checkForUpdates=false
+app.enableTelemetry=false
+app.glDebug=false
+app.pythonStartupThreaded=true
