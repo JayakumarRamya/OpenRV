@@ -1,186 +1,100 @@
-name: OpenRV Windows
+#
+# Copyright (C) 2022  Autodesk, Inc. All Rights Reserved.
+#
+# SPDX-License-Identifier: Apache-2.0
+#
 
-on:
-  workflow_dispatch:
-    inputs:
-      skip_deps_cache:
-        type: string
-        default: 'false'
-      qt5_modules:
-        type: string
-      full_matrix:
-        type: string
-        default: 'true'
-      run_debug:
-        type: string
-        default: 'true'
+MESSAGE(STATUS "Install prefix: \"${CMAKE_INSTALL_PREFIX}\"")
 
-jobs:
+IF(NOT IS_ABSOLUTE ${CMAKE_INSTALL_PREFIX})
+  MESSAGE(FATAL_ERROR "${CMAKE_INSTALL_PREFIX} is not an absolute path")
+ENDIF()
 
-  windows-pr:
-    name: 'Windows ${{ matrix.vfx-platform }}
-      <${{ matrix.os }}
-       msvc=${{ matrix.msvc-component }},
-       qt=${{ matrix.qt-version }},
-       python=${{ matrix.python-version }},
-       cmake=${{ matrix.cmake-version }},
-       arch=${{ matrix.arch-type }},
-       config=${{ matrix.build-type }}>'
+# ── Collect all files ─────────────────────────────────────────────────────────
+FILE(
+  GLOB_RECURSE FILES_TO_COPY
+  LIST_DIRECTORIES FALSE
+  RELATIVE ${RV_APP_ROOT}
+  ${RV_APP_ROOT}/*
+)
 
-    strategy:
-      fail-fast: false
-      matrix:
-        include:
-          - os: "windows-2022"
-            arch-type: "x86_64"
-            build-type: "Release"
-            qt-version: "6.5.3"
-            python-version: "3.11"
-            cmake-version: "3.31.6"
-            vfx-platform: "CY2024"
-            msvc-component: "14.40.17.10.x86.x64"
-            msvc-compiler: "14.40.33807"
+# ── Skip junk files that bloat the install and slow down loading ──────────────
+# Only skip in Release — Debug keeps .pdb for stack traces
+SET(_SKIP_EXTS "")
+IF(CMAKE_BUILD_TYPE STREQUAL "Release")
+  LIST(APPEND _SKIP_EXTS ".ilk" ".exp" ".obj" ".iobj" ".ipdb" ".map")
+ENDIF()
 
-    runs-on: ${{ matrix.os }}
-    env:
-      SCCACHE_GHA_ENABLED: false
+# Always skip these directories regardless of build type
+SET(_SKIP_SEGMENTS "CMakeFiles/" "__pycache__/" ".git/")
 
-    steps:
-      - name: Check out repository code
-        uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd
-        with:
-          submodules: recursive
+SET(_CLEAN_FILES "")
+FOREACH(_F ${FILES_TO_COPY})
+  # Directory filter
+  SET(_SKIP FALSE)
+  FOREACH(_SEG ${_SKIP_SEGMENTS})
+    STRING(FIND "${_F}" "${_SEG}" _IDX)
+    IF(NOT _IDX EQUAL -1)
+      SET(_SKIP TRUE)
+      BREAK()
+    ENDIF()
+  ENDFOREACH()
+  IF(_SKIP)
+    CONTINUE()
+  ENDIF()
 
-      - uses: ./.github/actions/build-windows
-        with:
-          build-type: ${{ matrix.build-type }}
-          qt-version: ${{ matrix.qt-version }}
-          python-version: ${{ matrix.python-version }}
-          cmake-version: ${{ matrix.cmake-version }}
-          vfx-platform: ${{ matrix.vfx-platform }}
-          msvc-component: ${{ matrix.msvc-component }}
-          msvc-compiler: ${{ matrix.msvc-compiler }}
-          qt5_modules: ${{ inputs.qt5_modules }}
+  # Extension filter (Release only)
+  IF(CMAKE_BUILD_TYPE STREQUAL "Release")
+    GET_FILENAME_COMPONENT(_EXT "${_F}" EXT)
+    STRING(TOLOWER "${_EXT}" _EXT_L)
+    IF("${_EXT_L}" IN_LIST _SKIP_EXTS)
+      CONTINUE()
+    ENDIF()
+  ENDIF()
 
-      - name: Upload Windows build
-        uses: actions/upload-artifact@v4
-        with:
-          name: openrv-windows-${{ matrix.build-type }}
-          path: _install
+  LIST(APPEND _CLEAN_FILES "${_F}")
+ENDFOREACH()
 
+# ── Install loop ──────────────────────────────────────────────────────────────
+LIST(LENGTH _CLEAN_FILES FILES_TO_COPY_LENGTH)
+SET(CURRENT_FILE_INDEX "0")
+SET(FILES_TO_FIX_RPATH "")
 
-  windows-debug:
-    if: ${{ inputs.run_debug == 'true' }}
+FOREACH(
+  FILE_TO_COPY
+  ${_CLEAN_FILES}
+)
+  MATH(
+    EXPR CURRENT_FILE_INDEX "${CURRENT_FILE_INDEX}+1"
+    OUTPUT_FORMAT DECIMAL
+  )
+  MATH(
+    EXPR CURRENT_PERCENTAGE " ${CURRENT_FILE_INDEX} * 100 / ${FILES_TO_COPY_LENGTH} "
+    OUTPUT_FORMAT DECIMAL
+  )
 
-    name: 'Windows ${{ matrix.vfx-platform }}
-      <${{ matrix.os }}
-       msvc=${{ matrix.msvc-component }},
-       qt=${{ matrix.qt-version }},
-       python=${{ matrix.python-version }},
-       cmake=${{ matrix.cmake-version }},
-       arch=${{ matrix.arch-type }},
-       config=${{ matrix.build-type }}>'
+  BEFORE_COPY(${RV_APP_ROOT}/${FILE_TO_COPY} SHOULD_INSTALL)
+  IF(NOT SHOULD_INSTALL)
+    MESSAGE(STATUS "${CURRENT_PERCENTAGE}% -- Skipping\t ${RV_APP_ROOT}/${FILE_TO_COPY}")
+    CONTINUE()
+  ENDIF()
 
-    strategy:
-      fail-fast: false
-      matrix:
-        include:
-          - os: "windows-2022"
-            arch-type: "x86_64"
-            build-type: "Debug"
-            qt-version: "6.5.3"
-            python-version: "3.11"
-            cmake-version: "3.31.6"
-            vfx-platform: "CY2024"
-            msvc-component: "14.40.17.10.x86.x64"
-            msvc-compiler: "14.40.33807"
+  GET_FILENAME_COMPONENT(DESTINATION_FOLDER ${CMAKE_INSTALL_PREFIX}/${FILE_TO_COPY} DIRECTORY)
 
-    runs-on: ${{ matrix.os }}
-    env:
-      SCCACHE_GHA_ENABLED: false
+  # Only log every 10% to reduce I/O noise — same info, less spam
+  MATH(EXPR _MOD "${CURRENT_FILE_INDEX} % 10" OUTPUT_FORMAT DECIMAL)
+  IF(_MOD EQUAL 0 OR CURRENT_FILE_INDEX EQUAL 1 OR CURRENT_FILE_INDEX EQUAL FILES_TO_COPY_LENGTH)
+    MESSAGE(STATUS "${CURRENT_PERCENTAGE}% -- Installing ${CMAKE_INSTALL_PREFIX}/${FILE_TO_COPY}")
+  ENDIF()
 
-    steps:
-      - name: Check out repository code
-        uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd
-        with:
-          submodules: recursive
+  FILE(
+    COPY ${RV_APP_ROOT}/${FILE_TO_COPY}
+    DESTINATION ${DESTINATION_FOLDER}
+    USE_SOURCE_PERMISSIONS
+  )
 
-      - uses: ./.github/actions/build-windows
-        with:
-          build-type: ${{ matrix.build-type }}
-          qt-version: ${{ matrix.qt-version }}
-          python-version: ${{ matrix.python-version }}
-          cmake-version: ${{ matrix.cmake-version }}
-          vfx-platform: ${{ matrix.vfx-platform }}
-          msvc-component: ${{ matrix.msvc-component }}
-          msvc-compiler: ${{ matrix.msvc-compiler }}
-          qt5_modules: ${{ inputs.qt5_modules }}
+  AFTER_COPY(${CMAKE_INSTALL_PREFIX}/${FILE_TO_COPY} ${RV_APP_ROOT}/${FILE_TO_COPY} FILES_TO_FIX_RPATH)
 
-      - name: Upload Windows build
-        uses: actions/upload-artifact@v4
-        with:
-          name: openrv-windows-${{ matrix.build-type }}
-          path: _install
+ENDFOREACH()
 
-
-  windows-cy2023:
-    if: ${{ inputs.full_matrix == 'true' }}
-
-    name: 'Windows ${{ matrix.vfx-platform }}
-      <${{ matrix.os }}
-       msvc=${{ matrix.msvc-component }},
-       qt=${{ matrix.qt-version }},
-       python=${{ matrix.python-version }},
-       cmake=${{ matrix.cmake-version }},
-       arch=${{ matrix.arch-type }},
-       config=${{ matrix.build-type }}>'
-
-    strategy:
-      fail-fast: false
-      matrix:
-        include:
-          - os: "windows-2022"
-            arch-type: "x86_64"
-            build-type: "Release"
-            qt-version: "5.15.2"
-            python-version: "3.10"
-            cmake-version: "3.31.6"
-            vfx-platform: "CY2023"
-            msvc-component: "14.40.17.10.x86.x64"
-            msvc-compiler: "14.40.33807"
-          - os: "windows-2022"
-            arch-type: "x86_64"
-            build-type: "Debug"
-            qt-version: "5.15.2"
-            python-version: "3.10"
-            cmake-version: "3.31.6"
-            vfx-platform: "CY2023"
-            msvc-component: "14.40.17.10.x86.x64"
-            msvc-compiler: "14.40.33807"
-
-    runs-on: ${{ matrix.os }}
-    env:
-      SCCACHE_GHA_ENABLED: false
-
-    steps:
-      - name: Check out repository code
-        uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd
-        with:
-          submodules: recursive
-
-      - uses: ./.github/actions/build-windows
-        with:
-          build-type: ${{ matrix.build-type }}
-          qt-version: ${{ matrix.qt-version }}
-          python-version: ${{ matrix.python-version }}
-          cmake-version: ${{ matrix.cmake-version }}
-          vfx-platform: ${{ matrix.vfx-platform }}
-          msvc-component: ${{ matrix.msvc-component }}
-          msvc-compiler: ${{ matrix.msvc-compiler }}
-          qt5_modules: ${{ inputs.qt5_modules }}
-
-      - name: Upload Windows build
-        uses: actions/upload-artifact@v4
-        with:
-          name: openrv-windows-${{ matrix.build-type }}
-          path: _install
+POST_INSTALL()
