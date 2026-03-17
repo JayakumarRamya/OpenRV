@@ -55,27 +55,21 @@ jobs:
     runs-on: ${{ matrix.os }}
 
     env:
-      # ── sccache (compiler cache — dramatically speeds up rebuilds) ──────────
-      SCCACHE_GHA_ENABLED:  "true"
-      SCCACHE_CACHE_SIZE:   "10G"
-      # ── MSVC parallel compilation ───────────────────────────────────────────
-      CL:                   "/MP"
-      # ── Ninja parallel jobs (use all available cores) ──────────────────────
+      SCCACHE_GHA_ENABLED:        "true"
+      SCCACHE_CACHE_SIZE:         "10G"
+      CL:                         "/MP"
       CMAKE_BUILD_PARALLEL_LEVEL: "0"
 
     steps:
-      # ── Source ───────────────────────────────────────────────────────────────
       - name: Check out repository code
         uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd
         with:
           submodules: recursive
-          fetch-depth: 1            # shallow clone — faster checkout
+          fetch-depth: 1
 
-      # ── sccache bootstrap ─────────────────────────────────────────────────
       - name: Set up sccache
         uses: mozilla-actions/sccache-action@v0.0.4
 
-      # ── Dependency cache ──────────────────────────────────────────────────
       - name: Cache third-party dependencies
         if: inputs.skip_deps_cache != 'true'
         uses: actions/cache@v4
@@ -89,7 +83,6 @@ jobs:
             deps-win-${{ matrix.vfx-platform }}-${{ matrix.qt-version }}-
             deps-win-${{ matrix.vfx-platform }}-
 
-      # ── Build ─────────────────────────────────────────────────────────────
       - uses: ./.github/actions/build-windows
         with:
           build-type:       ${{ matrix.build-type }}
@@ -100,7 +93,6 @@ jobs:
           msvc-component:   ${{ matrix.msvc-component }}
           msvc-compiler:    ${{ matrix.msvc-compiler }}
           qt5_modules:      ${{ inputs.qt5_modules }}
-          # ── Optimisation flags injected at CMake configure time ────────────
           extra-cmake-flags: >-
             -DCMAKE_CXX_FLAGS="/O2 /Ob2 /Oi /Ot /GL /fp:fast /arch:AVX2 /MP"
             -DCMAKE_C_FLAGS="/O2 /Ob2 /Oi /Ot /GL /fp:fast /arch:AVX2 /MP"
@@ -114,14 +106,32 @@ jobs:
             -DRV_CACHE_IO_THREADS=8
             -DRV_CACHE_LOOKAHEAD_MB=8192
 
-      # ── Upload artifact ───────────────────────────────────────────────────
+      # ── Stage rv_prefs + Install-RVPrefs.ps1 into _install ─────────────────
+      - name: Stage rv_prefs and installer script into _install
+        run: |
+          Copy-Item -Path "${{ github.workspace }}\rv_prefs" `
+                    -Destination "${{ github.workspace }}\_install\rv_prefs" `
+                    -Force
+          Copy-Item -Path "${{ github.workspace }}\Install-RVPrefs.ps1" `
+                    -Destination "${{ github.workspace }}\_install\Install-RVPrefs.ps1" `
+                    -Force
+          Write-Host "Staged rv_prefs and Install-RVPrefs.ps1 into _install"
+
+      # ── Deploy rv_prefs on the CI runner (smoke test) ──────────────────────
+      - name: Deploy rv_prefs on CI runner
+        run: |
+          Set-ExecutionPolicy -Scope Process -ExecutionPolicy Bypass -Force
+          & "${{ github.workspace }}\_install\Install-RVPrefs.ps1" `
+              -InstallDir "${{ github.workspace }}\_install"
+
+      # ── Upload artifact (rv_prefs + script bundled inside) ─────────────────
       - name: Upload Windows Release build
         uses: actions/upload-artifact@v4
         with:
-          name:            openrv-windows-${{ matrix.vfx-platform }}-${{ matrix.build-type }}
-          path:            _install
-          retention-days: 14
-          compression-level: 9     # max compress — smaller artifact, faster download
+          name:             openrv-windows-${{ matrix.vfx-platform }}-${{ matrix.build-type }}
+          path:             _install
+          retention-days:  14
+          compression-level: 9
 
 
   # ───────────────────────────────────────────────────────────────────────────
@@ -157,10 +167,10 @@ jobs:
     runs-on: ${{ matrix.os }}
 
     env:
-      SCCACHE_GHA_ENABLED:          "true"
-      SCCACHE_CACHE_SIZE:           "10G"
-      CL:                           "/MP"
-      CMAKE_BUILD_PARALLEL_LEVEL:   "0"
+      SCCACHE_GHA_ENABLED:        "true"
+      SCCACHE_CACHE_SIZE:         "10G"
+      CL:                         "/MP"
+      CMAKE_BUILD_PARALLEL_LEVEL: "0"
 
     steps:
       - name: Check out repository code
@@ -194,7 +204,6 @@ jobs:
           msvc-component:   ${{ matrix.msvc-component }}
           msvc-compiler:    ${{ matrix.msvc-compiler }}
           qt5_modules:      ${{ inputs.qt5_modules }}
-          # Debug keeps /Zi (full debug info) but still uses /MP for speed
           extra-cmake-flags: >-
             -DCMAKE_CXX_FLAGS="/Zi /MP /RTC1"
             -DCMAKE_C_FLAGS="/Zi /MP /RTC1"
@@ -203,6 +212,25 @@ jobs:
             -DRV_ENABLE_LARGE_FILE=ON
             -DRV_FFMPEG_ENABLE_HWACCEL=ON
 
+      # ── Stage rv_prefs + Install-RVPrefs.ps1 into _install ─────────────────
+      - name: Stage rv_prefs and installer script into _install
+        run: |
+          Copy-Item -Path "${{ github.workspace }}\rv_prefs" `
+                    -Destination "${{ github.workspace }}\_install\rv_prefs" `
+                    -Force
+          Copy-Item -Path "${{ github.workspace }}\Install-RVPrefs.ps1" `
+                    -Destination "${{ github.workspace }}\_install\Install-RVPrefs.ps1" `
+                    -Force
+          Write-Host "Staged rv_prefs and Install-RVPrefs.ps1 into _install"
+
+      # ── Deploy rv_prefs on the CI runner (smoke test) ──────────────────────
+      - name: Deploy rv_prefs on CI runner
+        run: |
+          Set-ExecutionPolicy -Scope Process -ExecutionPolicy Bypass -Force
+          & "${{ github.workspace }}\_install\Install-RVPrefs.ps1" `
+              -InstallDir "${{ github.workspace }}\_install"
+
+      # ── Upload artifact ─────────────────────────────────────────────────────
       - name: Upload Windows Debug build
         uses: actions/upload-artifact@v4
         with:
@@ -231,7 +259,6 @@ jobs:
       fail-fast: false
       matrix:
         include:
-          # ── CY2023 Release ─────────────────────────────────────────────────
           - os:              "windows-2022"
             arch-type:       "x86_64"
             build-type:      "Release"
@@ -241,7 +268,6 @@ jobs:
             vfx-platform:    "CY2023"
             msvc-component:  "14.40.17.10.x86.x64"
             msvc-compiler:   "14.40.33807"
-          # ── CY2023 Debug ───────────────────────────────────────────────────
           - os:              "windows-2022"
             arch-type:       "x86_64"
             build-type:      "Debug"
@@ -255,10 +281,10 @@ jobs:
     runs-on: ${{ matrix.os }}
 
     env:
-      SCCACHE_GHA_ENABLED:          "true"
-      SCCACHE_CACHE_SIZE:           "10G"
-      CL:                           "/MP"
-      CMAKE_BUILD_PARALLEL_LEVEL:   "0"
+      SCCACHE_GHA_ENABLED:        "true"
+      SCCACHE_CACHE_SIZE:         "10G"
+      CL:                         "/MP"
+      CMAKE_BUILD_PARALLEL_LEVEL: "0"
 
     steps:
       - name: Check out repository code
@@ -305,10 +331,29 @@ jobs:
             -DRV_CACHE_IO_THREADS=8
             -DRV_CACHE_LOOKAHEAD_MB=8192
 
+      # ── Stage rv_prefs + Install-RVPrefs.ps1 into _install ─────────────────
+      - name: Stage rv_prefs and installer script into _install
+        run: |
+          Copy-Item -Path "${{ github.workspace }}\rv_prefs" `
+                    -Destination "${{ github.workspace }}\_install\rv_prefs" `
+                    -Force
+          Copy-Item -Path "${{ github.workspace }}\Install-RVPrefs.ps1" `
+                    -Destination "${{ github.workspace }}\_install\Install-RVPrefs.ps1" `
+                    -Force
+          Write-Host "Staged rv_prefs and Install-RVPrefs.ps1 into _install"
+
+      # ── Deploy rv_prefs on the CI runner (smoke test) ──────────────────────
+      - name: Deploy rv_prefs on CI runner
+        run: |
+          Set-ExecutionPolicy -Scope Process -ExecutionPolicy Bypass -Force
+          & "${{ github.workspace }}\_install\Install-RVPrefs.ps1" `
+              -InstallDir "${{ github.workspace }}\_install"
+
+      # ── Upload artifact ─────────────────────────────────────────────────────
       - name: Upload Windows CY2023 build
         uses: actions/upload-artifact@v4
         with:
-          name:            openrv-windows-${{ matrix.vfx-platform }}-${{ matrix.build-type }}
-          path:            _install
-          retention-days: 14
+          name:             openrv-windows-${{ matrix.vfx-platform }}-${{ matrix.build-type }}
+          path:             _install
+          retention-days:  14
           compression-level: 9
