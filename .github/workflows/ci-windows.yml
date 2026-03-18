@@ -87,12 +87,17 @@ jobs:
           Copy-Item -Path "$repo\rv_cache_prewarm.mu" -Destination "$dest\rv_cache_prewarm.mu" -Force
           Write-Host "[OK] rv_cache_prewarm.mu staged"
 
-          # ── rvpkg plugin — use pre-built file directly ─────────────────────
-          Copy-Item -Path "$repo\stack_shortcuts-1_0.rvpkg" -Destination "$dest\stack_shortcuts-1_0.rvpkg" -Force
-          Write-Host "[OK] stack_shortcuts-1_0.rvpkg staged"
+          # ── rvpkg plugin ───────────────────────────────────────────────────
+          $rvpkg = "$repo\stack_shortcuts-1.0.rvpkg"
+          if (Test-Path $rvpkg) {
+            Copy-Item -Path $rvpkg -Destination "$dest\stack_shortcuts-1.0.rvpkg" -Force
+            Write-Host "[OK] stack_shortcuts-1.0.rvpkg staged"
+          } else {
+            Write-Host "[SKIP] stack_shortcuts-1.0.rvpkg not found in repo root"
+          }
 
           Write-Host ""
-          Write-Host "All files staged into _install successfully"
+          Write-Host "Staging complete"
 
       - name: Upload Windows build
         uses: actions/upload-artifact@v4
@@ -160,8 +165,17 @@ jobs:
           Copy-Item -Path "$repo\rv_prefs_IntelUHD770_noGPU" -Destination "$dest\rv_prefs_IntelUHD770_noGPU" -Force
           Copy-Item -Path "$repo\Install-RVPrefs.ps1"        -Destination "$dest\Install-RVPrefs.ps1"        -Force
           Copy-Item -Path "$repo\rv_cache_prewarm.mu"        -Destination "$dest\rv_cache_prewarm.mu"        -Force
-          Copy-Item -Path "$repo\stack_shortcuts-1_0.rvpkg"  -Destination "$dest\stack_shortcuts-1_0.rvpkg"  -Force
-          Write-Host "All files staged into _install successfully"
+          Write-Host "[OK] Core files staged"
+
+          $rvpkg = "$repo\stack_shortcuts-1.0.rvpkg"
+          if (Test-Path $rvpkg) {
+            Copy-Item -Path $rvpkg -Destination "$dest\stack_shortcuts-1.0.rvpkg" -Force
+            Write-Host "[OK] stack_shortcuts-1.0.rvpkg staged"
+          } else {
+            Write-Host "[SKIP] stack_shortcuts-1.0.rvpkg not found in repo root"
+          }
+
+          Write-Host "Staging complete"
 
       - name: Upload Windows build
         uses: actions/upload-artifact@v4
