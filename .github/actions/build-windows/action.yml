@@ -204,13 +204,22 @@ runs:
         # Upstream ships these decoders disabled for licensing reasons; see
         # cmake/dependencies/ffmpeg.cmake. Without prores here, ProRes .mov
         # dailies will not open at all.
+        #
+        # eac3 is in the list because ac3 is. Upstream disables ac3, eac3 and
+        # ac3_fixed together under RV_FFMPEG_8 (ffmpeg.cmake, the C2129 note):
+        # ac3dec.c names the static ff_eac3_parse_header inside an
+        # `if (CONFIG_EAC3_DECODER)` branch, and that symbol only exists when
+        # ac3dec.c #includes eac3dec.c, i.e. when the eac3 decoder is on.
+        # MSVC does not dead-strip the branch, it errors out. Re-enabling ac3
+        # without eac3 puts that same broken combination back, just in
+        # ac3dec_float.c instead of ac3dec_fixed.c.
         cmake -B _build -G "Visual Studio 17 2022" -A x64 \
           -DRV_DEPS_WIN_PERL_ROOT=c:/Strawberry/perl/bin \
           -DCMAKE_BUILD_TYPE=${{ inputs.build-type }} \
           -DRV_DEPS_QT_LOCATION=$QT_HOME \
           -DRV_VFX_PLATFORM=${{ inputs.vfx-platform }} \
           -DRV_UI_APPLICATION_NAME="$UI_NAME" \
-          -DRV_FFMPEG_NON_FREE_DECODERS_TO_ENABLE="aac;ac3;h264;hevc;mpeg4;mpeg2video;prores;dnxhd;vp9" \
+          -DRV_FFMPEG_NON_FREE_DECODERS_TO_ENABLE="aac;ac3;eac3;h264;hevc;mpeg4;mpeg2video;prores;dnxhd;vp9" \
           -DRV_FFMPEG_NON_FREE_ENCODERS_TO_ENABLE="aac;ac3;mpeg4;prores;dnxhd" \
           ${{ inputs.extra-cmake-flags }}
       shell: msys2 {0}
