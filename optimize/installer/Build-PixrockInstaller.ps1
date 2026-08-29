@@ -37,7 +37,10 @@ param(
     [switch] $SkipDownload,
     # Point at an already-unpacked payload instead of downloading one.
     # Useful for re-packaging or for testing the verification steps.
-    [string] $PayloadDir = ''
+    [string] $PayloadDir = '',
+    # UI name the binaries must contain. Override only when packaging a build
+    # that predates the current naming - never to make a bad build pass.
+    [string] $ExpectedName = 'Pixrock RV'
 )
 
 Set-StrictMode -Version Latest
@@ -149,7 +152,7 @@ if (-not $needle) {
 }
 
 # ── 4. UI name ─────────────────────────────────────────────────────────────
-Step 4 'Verifying UI renamed to "Pixrock RV"'
+Step 4 "Verifying UI name: $ExpectedName"
 
 # UI_APPLICATION_NAME is compiled in as a narrow string literal, so it lives
 # in RvCommon rather than rv.exe itself.
@@ -162,14 +165,14 @@ $targets = @(
 $nameFound = $false
 foreach ($t in $targets) {
     $txt = [Text.Encoding]::ASCII.GetString([IO.File]::ReadAllBytes($t))
-    if ($txt.Contains('Pixrock RV')) {
+    if ($txt.Contains($ExpectedName)) {
         Write-Host ("      found in {0}" -f (Split-Path $t -Leaf)) -ForegroundColor Green
         $nameFound = $true
         break
     }
 }
 if (-not $nameFound) {
-    Fail 'string "Pixrock RV" not found - RV_UI_APPLICATION_NAME did not take effect'
+    Fail "string '$ExpectedName' not found - RV_UI_APPLICATION_NAME did not take effect"
 }
 
 # ── 5. Compile installer ───────────────────────────────────────────────────
