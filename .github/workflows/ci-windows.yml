@@ -12,8 +12,15 @@ on:
         type: string
         default: 'true'
       run_debug:
+        description: >-
+          Also build the Debug configuration. Defaults off: it is a second
+          ~3 hour job and is not needed for a shippable installer.
         type: string
-        default: 'true'
+        default: 'false'
+      ui_app_name:
+        description: "RV_UI_APPLICATION_NAME - shown in the About box and window titles"
+        type: string
+        default: 'Pixrock'
 
 jobs:
 
@@ -62,42 +69,35 @@ jobs:
           msvc-component: ${{ matrix.msvc-component }}
           msvc-compiler: ${{ matrix.msvc-compiler }}
           qt5_modules: ${{ inputs.qt5_modules }}
+          ui-app-name: ${{ inputs.ui_app_name }}
           extra-cmake-flags: >-
             -DOPENEXR_CXX_FLAGS="/O2 /arch:AVX2 /fp:fast /GL"
             -DOPENEXR_ENABLE_THREADING=ON
             -DOPENEXR_BUILD_BOTH_STATIC_SHARED=OFF
 
-      - name: Stage all files into _install
+      - name: Stage tuning files into _install
         shell: pwsh
         run: |
           $repo = "${{ github.workspace }}"
           $dest = "${{ github.workspace }}\_install"
 
-          # ── rv_prefs (3 GPU profiles) ──────────────────────────────────────
-          Copy-Item -Path "$repo\rv_prefs_NVIDIA_RTX3060"    -Destination "$dest\rv_prefs_NVIDIA_RTX3060"    -Force
-          Copy-Item -Path "$repo\rv_prefs_AMD_RX5700"        -Destination "$dest\rv_prefs_AMD_RX5700"        -Force
-          Copy-Item -Path "$repo\rv_prefs_IntelUHD770_noGPU" -Destination "$dest\rv_prefs_IntelUHD770_noGPU" -Force
-          Write-Host "[OK] rv_prefs files staged"
+          # Everything ships under _install\optimize so the artifact is
+          # installer-ready: Pixrock_Installer.iss packages {src}\optimize\*
+          # wholesale. Previously these landed loose in the artifact root and
+          # had to be rearranged by hand before the installer would build.
+          New-Item -ItemType Directory -Force -Path "$dest\optimize" | Out-Null
+          Copy-Item -Path "$repo\optimize\*" -Destination "$dest\optimize" -Recurse -Force
 
-          # ── installer script ───────────────────────────────────────────────
-          Copy-Item -Path "$repo\Install-RVPrefs.ps1" -Destination "$dest\Install-RVPrefs.ps1" -Force
-          Write-Host "[OK] Install-RVPrefs.ps1 staged"
+          Copy-Item -Path "$repo\LICENSE" -Destination "$dest\LICENSE" -Force
 
-          # ── prewarm cache Mu script ────────────────────────────────────────
-          Copy-Item -Path "$repo\rv_cache_prewarm.mu" -Destination "$dest\rv_cache_prewarm.mu" -Force
-          Write-Host "[OK] rv_cache_prewarm.mu staged"
+          Write-Host "Staged into _install\optimize:"
+          Get-ChildItem "$dest\optimize" -Recurse -File |
+            ForEach-Object { Write-Host "  $($_.FullName.Substring($dest.Length + 1))" }
 
-          # ── rvpkg plugin ───────────────────────────────────────────────────
-          $rvpkg = "$repo\stack_shortcuts-1.0.rvpkg"
-          if (Test-Path $rvpkg) {
-            Copy-Item -Path $rvpkg -Destination "$dest\stack_shortcuts-1.0.rvpkg" -Force
-            Write-Host "[OK] stack_shortcuts-1.0.rvpkg staged"
-          } else {
-            Write-Host "[SKIP] stack_shortcuts-1.0.rvpkg not found in repo root"
-          }
-
-          Write-Host ""
-          Write-Host "Staging complete"
+      - name: Verify decoders were compiled in
+        shell: pwsh
+        run: |
+          python optimize/probe_decoders.py "${{ github.workspace }}\_install\bin"
 
       - name: Upload Windows build
         uses: actions/upload-artifact@v4
@@ -153,27 +153,17 @@ jobs:
           msvc-component: ${{ matrix.msvc-component }}
           msvc-compiler: ${{ matrix.msvc-compiler }}
           qt5_modules: ${{ inputs.qt5_modules }}
+          ui-app-name: ${{ inputs.ui_app_name }}
 
-      - name: Stage all files into _install
+      - name: Stage tuning files into _install
         shell: pwsh
         run: |
           $repo = "${{ github.workspace }}"
           $dest = "${{ github.workspace }}\_install"
 
-          Copy-Item -Path "$repo\rv_prefs_NVIDIA_RTX3060"    -Destination "$dest\rv_prefs_NVIDIA_RTX3060"    -Force
-          Copy-Item -Path "$repo\rv_prefs_AMD_RX5700"        -Destination "$dest\rv_prefs_AMD_RX5700"        -Force
-          Copy-Item -Path "$repo\rv_prefs_IntelUHD770_noGPU" -Destination "$dest\rv_prefs_IntelUHD770_noGPU" -Force
-          Copy-Item -Path "$repo\Install-RVPrefs.ps1"        -Destination "$dest\Install-RVPrefs.ps1"        -Force
-          Copy-Item -Path "$repo\rv_cache_prewarm.mu"        -Destination "$dest\rv_cache_prewarm.mu"        -Force
-          Write-Host "[OK] Core files staged"
-
-          $rvpkg = "$repo\stack_shortcuts-1.0.rvpkg"
-          if (Test-Path $rvpkg) {
-            Copy-Item -Path $rvpkg -Destination "$dest\stack_shortcuts-1.0.rvpkg" -Force
-            Write-Host "[OK] stack_shortcuts-1.0.rvpkg staged"
-          } else {
-            Write-Host "[SKIP] stack_shortcuts-1.0.rvpkg not found in repo root"
-          }
+          New-Item -ItemType Directory -Force -Path "$dest\optimize" | Out-Null
+          Copy-Item -Path "$repo\optimize\*" -Destination "$dest\optimize" -Recurse -Force
+          Copy-Item -Path "$repo\LICENSE" -Destination "$dest\LICENSE" -Force
 
           Write-Host "Staging complete"
 

@@ -19,6 +19,21 @@ inputs:
   qt5_modules:
     required: false
     default: ''
+  extra-cmake-flags:
+    description: >-
+      Additional flags appended to the cmake configure line. This input was
+      being passed by ci-windows.yml but never referenced here, so everything
+      sent to it -- including the OPENEXR AVX2 flags -- was silently discarded.
+    required: false
+    default: ''
+  ui-app-name:
+    description: >-
+      Value for RV_UI_APPLICATION_NAME (About box, window titles). Only the UI
+      name is overridable on purpose: RV_INTERNAL_APPLICATION_NAME must stay
+      "OpenRV" because PackageManager.cpp branches on it to decide which
+      version field .rvpkg files are validated against.
+    required: false
+    default: ''
   windows_qt5_archives:
     required: false
     default: 'd3dcompiler_47 opengl32sw qt3d qtactiveqt qtbase qtconnectivity qtdeclarative qtgraphicaleffects qtimageformats qtlocation qtmultimedia qtquickcontrols qtquickcontrols2 qtremoteobjects qtscxml qtsensors qtsvg qttools qttranslations qtwebchannel qtwebsockets qtwebview qtwinextras qtxmlpatterns'
@@ -200,7 +215,9 @@ runs:
         cmake --version
         export QT_HOME=c:/Qt/${{ inputs.qt-version }}/msvc2019_64
         export MSYS2_ARG_CONV_EXCL="*"
-        cmake -B _build -G "Visual Studio 17 2022" -A x64 -DRV_DEPS_WIN_PERL_ROOT=c:/Strawberry/perl/bin -DCMAKE_BUILD_TYPE=${{ inputs.build-type }} -DRV_DEPS_QT_LOCATION=$QT_HOME -DRV_VFX_PLATFORM=${{ inputs.vfx-platform }} -DRV_FFMPEG_NON_FREE_DECODERS_TO_ENABLE="aac;ac3;h264;hevc;mpeg4;mpeg2video;prores;vp9" -DRV_FFMPEG_NON_FREE_ENCODERS_TO_ENABLE="aac;ac3;mpeg4;prores"
+        UI_NAME_FLAG=""
+        if [ -n "${{ inputs.ui-app-name }}" ]; then UI_NAME_FLAG="-DRV_UI_APPLICATION_NAME=${{ inputs.ui-app-name }}"; fi
+        cmake -B _build -G "Visual Studio 17 2022" -A x64 -DRV_DEPS_WIN_PERL_ROOT=c:/Strawberry/perl/bin -DCMAKE_BUILD_TYPE=${{ inputs.build-type }} -DRV_DEPS_QT_LOCATION=$QT_HOME -DRV_VFX_PLATFORM=${{ inputs.vfx-platform }} -DRV_FFMPEG_NON_FREE_DECODERS_TO_ENABLE="aac;ac3;h264;hevc;mpeg4;mpeg2video;prores;vp9;dnxhd" -DRV_FFMPEG_NON_FREE_ENCODERS_TO_ENABLE="aac;ac3;mpeg4;prores;dnxhd" $UI_NAME_FLAG ${{ inputs.extra-cmake-flags }}
       shell: msys2 {0}
 
     - name: Configure OpenRV
@@ -209,7 +226,9 @@ runs:
         cmake --version
         export QT_HOME=c:/Qt/${{ inputs.qt-version }}/msvc2019_64
         export MSYS2_ARG_CONV_EXCL="*"
-        cmake -B _build -G "Visual Studio 17 2022" -A x64 -DRV_DEPS_WIN_PERL_ROOT=c:/Strawberry/perl/bin -DCMAKE_BUILD_TYPE=${{ inputs.build-type }} -DRV_DEPS_QT_LOCATION=$QT_HOME -DRV_VFX_PLATFORM=${{ inputs.vfx-platform }} -DRV_FFMPEG_NON_FREE_DECODERS_TO_ENABLE="aac;ac3;h264;hevc;mpeg4;mpeg2video;prores;vp9" -DRV_FFMPEG_NON_FREE_ENCODERS_TO_ENABLE="aac;ac3;mpeg4;prores"
+        UI_NAME_FLAG=""
+        if [ -n "${{ inputs.ui-app-name }}" ]; then UI_NAME_FLAG="-DRV_UI_APPLICATION_NAME=${{ inputs.ui-app-name }}"; fi
+        cmake -B _build -G "Visual Studio 17 2022" -A x64 -DRV_DEPS_WIN_PERL_ROOT=c:/Strawberry/perl/bin -DCMAKE_BUILD_TYPE=${{ inputs.build-type }} -DRV_DEPS_QT_LOCATION=$QT_HOME -DRV_VFX_PLATFORM=${{ inputs.vfx-platform }} -DRV_FFMPEG_NON_FREE_DECODERS_TO_ENABLE="aac;ac3;h264;hevc;mpeg4;mpeg2video;prores;vp9;dnxhd" -DRV_FFMPEG_NON_FREE_ENCODERS_TO_ENABLE="aac;ac3;mpeg4;prores;dnxhd" $UI_NAME_FLAG ${{ inputs.extra-cmake-flags }}
       shell: msys2 {0}
 
     - name: Build OpenRV dependencies
