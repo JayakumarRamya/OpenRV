@@ -6,7 +6,7 @@ on:
       ui_name:
         description: "UI application name (About box, window titles)"
         type: string
-        default: "Pixrock"
+        default: "Pixrock RV"
       enable_prores_dnxhd:
         description: >-
           Compile the ProRes and DNxHD decoders into FFmpeg. OpenRV ships these

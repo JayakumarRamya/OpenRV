@@ -1,4 +1,4 @@
-name: OpenRV Windows
+name: Pixrock RV Windows
 
 on:
   workflow_dispatch:
@@ -20,7 +20,7 @@ on:
       ui_app_name:
         description: "RV_UI_APPLICATION_NAME - shown in the About box and window titles"
         type: string
-        default: 'Pixrock'
+        default: 'Pixrock RV'
 
 jobs:
 
@@ -102,7 +102,7 @@ jobs:
       - name: Upload Windows build
         uses: actions/upload-artifact@v4
         with:
-          name: openrv-windows-${{ matrix.build-type }}
+          name: pixrock-rv-windows-${{ matrix.build-type }}
           path: _install
 
 
@@ -170,5 +170,5 @@ jobs:
       - name: Upload Windows build
         uses: actions/upload-artifact@v4
         with:
-          name: openrv-windows-${{ matrix.build-type }}
+          name: pixrock-rv-windows-${{ matrix.build-type }}
           path: _install

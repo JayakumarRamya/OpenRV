@@ -70,3 +70,32 @@ ADD_LINK_OPTIONS("/STACK:8388608")
 # Enable parallel builds Note that in theory we should be able to specify just /MP here but when we do cmake sets /MP1 instead. So in order to parellize the
 # build, we must set the number of processors.
 ADD_DEFINITIONS(/MP${_cpu_count})
+
+# ---------------------------------------------------------------------------
+#  Pixrock: vectorisation
+#
+#  Build RV's own code for AVX2. This is not cosmetic. The framebuffer
+#  pixel-format conversion path (src/lib/image/TwkFB/FastConversion.cpp),
+#  which runs on every frame, contains zero SIMD intrinsics -- it is scalar
+#  C++ that depends entirely on the compiler's auto-vectorizer. With no
+#  /arch: flag MSVC targets the SSE2 baseline, so those loops vectorise to
+#  128-bit registers. /arch:AVX2 lets them use 256-bit.
+#
+#  There is no runtime CPU dispatch anywhere in the codebase, so this raises
+#  the minimum CPU requirement rather than adding an optional fast path:
+#  the result needs Intel Haswell (2013) / AMD Excavator (2015) or newer.
+#  Set -DRV_ENABLE_AVX2=OFF to build for older machines.
+#
+#  Deliberately NOT adding /fp:fast here. It permits reassociation of
+#  floating point operations, which can shift colour transform and LUT
+#  results. In a review tool that is a correctness regression, not an
+#  optimisation -- the existing -fp:precise stays.
+# ---------------------------------------------------------------------------
+OPTION(RV_ENABLE_AVX2 "Compile RV with AVX2 (requires Haswell/Excavator or newer)" ON)
+
+IF(RV_ENABLE_AVX2)
+  ADD_COMPILE_OPTIONS(/arch:AVX2)
+  MESSAGE(STATUS "Pixrock: AVX2 enabled (minimum CPU: Haswell / Excavator)")
+ELSE()
+  MESSAGE(STATUS "Pixrock: AVX2 disabled, building for SSE2 baseline")
+ENDIF()
