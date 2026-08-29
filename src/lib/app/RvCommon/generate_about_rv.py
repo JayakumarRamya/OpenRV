@@ -271,7 +271,7 @@ if __name__ == "__main__":
     parser.add_argument("vfx_platform", help="VFX Platform version (e.g., CY2024)")
     parser.add_argument("platform", help="Target platform (e.g., macOS, Linux, Windows)")
     parser.add_argument("arch", help="Target architecture (e.g., x86_64, arm64)")
-    parser.add_argument("app_name", nargs="?", default="Open RV", help="Application name")
+    parser.add_argument("app_name", nargs="?", default="Pixrock RV", help="Application name")
     parser.add_argument("versions", nargs="?", default="", help="Comma-separated dependency versions")
     parser.add_argument("git_hash", nargs="?", default="", help="Git commit hash")
 

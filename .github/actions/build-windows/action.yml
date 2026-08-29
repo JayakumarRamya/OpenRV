@@ -16,6 +16,18 @@ inputs:
     required: true
   msvc-compiler:
     required: true
+  extra-cmake-flags:
+    description: 'Additional flags appended to the cmake configure line.'
+    required: false
+    default: ''
+  ui-app-name:
+    description: >-
+      Value for RV_UI_APPLICATION_NAME (About box, window titles). Only the UI
+      name is overridable on purpose: RV_INTERNAL_APPLICATION_NAME must stay
+      "OpenRV" because PackageManager.cpp branches on it to decide which
+      version field .rvpkg files are validated against.
+    required: false
+    default: ''
   windows_qt6_modules:
     required: false
     default: 'debug_info qt3d qt5compat qtactiveqt qtcharts qtconnectivity qtdatavis3d qtgrpc qthttpserver qtimageformats qtlanguageserver qtlocation qtlottie qtmultimedia qtnetworkauth qtpdf qtpositioning qtquick3d qtquick3dphysics qtquickeffectmaker qtquicktimeline qtremoteobjects qtscxml qtsensors qtserialbus qtserialport qtshadertools qtspeech qtvirtualkeyboard qtwebchannel qtwebengine qtwebsockets qtwebview'
@@ -172,11 +184,35 @@ runs:
         sccache --version || echo "WARNING: sccache not found in PATH"
       shell: msys2 {0}
 
-    - name: Configure OpenRV
+    - name: Configure Pixrock RV
       run: |
         cmake --version
         export QT_HOME=c:/Qt/${{ inputs.qt-version }}/msvc2019_64
-        cmake -B _build -G "Visual Studio 17 2022" -A x64 -DRV_DEPS_WIN_PERL_ROOT=c:/Strawberry/perl/bin -DCMAKE_BUILD_TYPE=${{ inputs.build-type }} -DRV_DEPS_QT_LOCATION=$QT_HOME -DRV_VFX_PLATFORM=${{ inputs.vfx-platform }}
+
+        # Stop msys2 rewriting arguments it mistakes for POSIX paths. The
+        # semicolon-separated codec lists below are the reason this is needed.
+        export MSYS2_ARG_CONV_EXCL="*"
+
+        # The UI name contains a space ("Pixrock RV"). It MUST stay quoted:
+        # an unquoted expansion word-splits it, which silently sets the name
+        # to "Pixrock" and passes a stray "RV" to cmake. That exact bug
+        # shipped in the 3.1.0 build before the verification step caught it.
+        UI_NAME="${{ inputs.ui-app-name }}"
+        if [ -z "$UI_NAME" ]; then UI_NAME="Open RV"; fi
+        echo "RV_UI_APPLICATION_NAME=[$UI_NAME]"
+
+        # Upstream ships these decoders disabled for licensing reasons; see
+        # cmake/dependencies/ffmpeg.cmake. Without prores here, ProRes .mov
+        # dailies will not open at all.
+        cmake -B _build -G "Visual Studio 17 2022" -A x64 \
+          -DRV_DEPS_WIN_PERL_ROOT=c:/Strawberry/perl/bin \
+          -DCMAKE_BUILD_TYPE=${{ inputs.build-type }} \
+          -DRV_DEPS_QT_LOCATION=$QT_HOME \
+          -DRV_VFX_PLATFORM=${{ inputs.vfx-platform }} \
+          -DRV_UI_APPLICATION_NAME="$UI_NAME" \
+          -DRV_FFMPEG_NON_FREE_DECODERS_TO_ENABLE="aac;ac3;h264;hevc;mpeg4;mpeg2video;prores;dnxhd;vp9" \
+          -DRV_FFMPEG_NON_FREE_ENCODERS_TO_ENABLE="aac;ac3;mpeg4;prores;dnxhd" \
+          ${{ inputs.extra-cmake-flags }}
       shell: msys2 {0}
 
     - name: Build OpenRV dependencies

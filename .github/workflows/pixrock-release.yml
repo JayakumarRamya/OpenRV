@@ -1,0 +1,102 @@
+# Builds the shippable Pixrock RV payload.
+#
+# Deliberately a separate workflow rather than edits to ci-windows.yml.
+# That file is upstream's and is invoked via workflow_call from ci.yml;
+# keeping it untouched means merging future OpenRV releases stays cheap.
+# Everything Pixrock-specific lives here.
+
+name: Pixrock RV Release
+
+on:
+  workflow_dispatch:
+    inputs:
+      ui_app_name:
+        description: "RV_UI_APPLICATION_NAME - About box and window titles"
+        type: string
+        default: 'Pixrock RV'
+      build_type:
+        description: "CMake build type"
+        type: choice
+        options: [Release, Debug]
+        default: Release
+      vfx_platform:
+        description: "VFX Reference Platform year"
+        type: choice
+        options: [CY2025, CY2024]
+        default: CY2025
+
+jobs:
+  build:
+    name: 'Pixrock RV ${{ inputs.vfx_platform }} ${{ inputs.build_type }}'
+    runs-on: windows-2022
+    timeout-minutes: 360
+    env:
+      SCCACHE_GHA_ENABLED: false
+
+    steps:
+      - name: Check out repository code
+        uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # 6.0.2
+        with:
+          submodules: recursive
+
+      - uses: ./.github/actions/build-windows
+        with:
+          build-type: ${{ inputs.build_type }}
+          qt-version: "6.5.3"
+          python-version: "3.11"
+          cmake-version: "3.31.6"
+          vfx-platform: ${{ inputs.vfx_platform }}
+          msvc-component: "14.40.17.10.x86.x64"
+          msvc-compiler: "14.40.33807"
+          ui-app-name: ${{ inputs.ui_app_name }}
+          # OpenEXR is the hot path for EXR sequences and, like RV itself,
+          # relies on the auto-vectorizer rather than hand-written SIMD.
+          extra-cmake-flags: >-
+            -DOPENEXR_CXX_FLAGS="/O2 /arch:AVX2 /fp:fast /GL"
+            -DOPENEXR_ENABLE_THREADING=ON
+
+      - name: Stage tuning files into _install
+        shell: pwsh
+        run: |
+          $dest = "${{ github.workspace }}\_install"
+          if (-not (Test-Path $dest)) { throw "build produced no _install directory" }
+
+          # Ships under _install\optimize because Pixrock_Installer.iss
+          # packages {src}\optimize\* wholesale, making the artifact
+          # installer-ready with no manual rearranging.
+          New-Item -ItemType Directory -Force -Path "$dest\optimize" | Out-Null
+          Copy-Item "${{ github.workspace }}\optimize\*" "$dest\optimize" -Recurse -Force
+          Copy-Item "${{ github.workspace }}\LICENSE"    "$dest\LICENSE"  -Force
+
+          Get-ChildItem "$dest\optimize" -Recurse -File |
+            ForEach-Object { Write-Host "  $($_.Name)" }
+
+      - name: Verify decoders were compiled in
+        shell: pwsh
+        run: python optimize/probe_decoders.py "${{ github.workspace }}\_install\bin"
+
+      - name: Verify UI was renamed
+        shell: pwsh
+        run: |
+          # Catches the shell-quoting failure mode where a name containing a
+          # space word-splits and only the first token reaches cmake. That
+          # shipped once before this check existed.
+          $expected = "${{ inputs.ui_app_name }}"
+          $found = $false
+          foreach ($f in Get-ChildItem "${{ github.workspace }}\_install" -Recurse -Include rv.exe,RvCommon.dll -ErrorAction SilentlyContinue) {
+            $txt = [Text.Encoding]::ASCII.GetString([IO.File]::ReadAllBytes($f.FullName))
+            if ($txt.Contains($expected)) {
+              Write-Host "  found '$expected' in $($f.Name)"
+              $found = $true
+              break
+            }
+          }
+          if (-not $found) {
+            throw "UI name '$expected' not present in the binaries - RV_UI_APPLICATION_NAME did not take effect"
+          }
+
+      - name: Upload Pixrock RV payload
+        uses: actions/upload-artifact@v4
+        with:
+          name: pixrock-rv-windows-${{ inputs.build_type }}
+          path: _install
